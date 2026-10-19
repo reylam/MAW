@@ -1,6 +1,7 @@
-﻿import { useEffect, useMemo, useState } from "react";
-import { useSimulationStore } from "../store/simulationStore";
+﻿import { useEffect, useState } from "react";
+import { useMawFeed } from "../store/mawFeedStore";
 import { useCrossingsLive } from "../hooks/useCrossingsLive.js";
+import CrossingWatch from "../components/watch/CrossingWatch";
 import { alertService } from "../services/alertService.js";
 import { eventService } from "../services/eventService.js";
 import { deviceService } from "../services/deviceService.js";
@@ -14,17 +15,20 @@ import SimulationBanner from "../components/ui/SimulationBanner";
 import { ApiErrorState, EmptyState, LoadingState } from "../components/ui/States";
 
 export default function Dashboard() {
-  const { crossingStatuses } = useSimulationStore();
-  const { data: crossings, loading, error, reload } = useCrossingsLive();
+  const changeKey = useMawFeed((s) => s.changeKey);
+  const feedConnected = useMawFeed((s) => s.connected);
+  const watchIds = useMawFeed((s) => Object.keys(s.states).join(',')).split(',').filter(Boolean);
+  const { data: liveCrossings, loading, error, reload } = useCrossingsLive();
   const [alerts, setAlerts] = useState([]);
   const [events, setEvents] = useState([]);
   const [deviceHealth, setDeviceHealth] = useState(null);
 
+  // Refetch whenever a crossing changes state (new alerts / events are created then).
   useEffect(() => {
     alertService.getAll({ status: 'active' }).then((res) => setAlerts((res.data || []).map(toAlert))).catch(() => setAlerts([]));
     eventService.getAll({ limit: 6 }).then((res) => setEvents(res.data || [])).catch(() => setEvents([]));
     deviceService.health().then((res) => setDeviceHealth(res.data || null)).catch(() => setDeviceHealth(null));
-  }, []);
+  }, [changeKey]);
 
   const handleAcknowledge = async (id) => {
     try {
@@ -32,11 +36,6 @@ export default function Dashboard() {
       setAlerts(alerts.map(a => a.id === id ? { ...a, status: 'acknowledged' } : a));
     } catch (err) { console.error("Failed to acknowledge alert", err); }
   };
-
-  const liveCrossings = useMemo(
-    () => crossings.map((c) => ({ ...c, status: crossingStatuses[c.id] || c.status })),
-    [crossings, crossingStatuses]
-  );
 
   const criticalCount = liveCrossings.filter((c) => c.status === "critical").length;
   const warningCount = liveCrossings.filter((c) => c.status === "warning").length;
@@ -72,7 +71,7 @@ export default function Dashboard() {
   const BannerIcon = banner.icon;
   const bannerMeta = getStatusMeta(systemStatus);
 
-  if (loading && crossings.length === 0) {
+  if (loading && liveCrossings.length === 0) {
     return <div className="p-4 sm:p-6 lg:p-8"><LoadingState label="Loading network status…" /></div>;
   }
   if (error) {
@@ -82,6 +81,9 @@ export default function Dashboard() {
   return (
     <div className="p-4 sm:p-6 lg:p-8 space-y-5 max-w-[1500px] mx-auto">
       <SimulationBanner />
+
+      {/* Q0: focused supervision of every crossing that has a sensor node. */}
+      {watchIds.map((id) => <CrossingWatch key={id} crossingId={id} />)}
 
       {/* Q1: Is the network currently safe? - the single dominant answer. */}
       <section className={`rounded-maw border ${bannerMeta.border} ${bannerMeta.soft} p-4 sm:p-5`}>
@@ -96,8 +98,9 @@ export default function Dashboard() {
               <p className="mt-0.5 text-sm text-maw-text-muted">{banner.sub}</p>
             </div>
           </div>
-          <div className="hidden sm:flex items-center gap-1.5 text-xs font-mono text-maw-text-subtle shrink-0">
-            <Clock3 size={13} /> Updated just now
+          <div className={`hidden sm:flex items-center gap-1.5 text-xs font-mono shrink-0 ${feedConnected ? "text-maw-safe" : "text-maw-critical"}`}>
+            <span className={`status-dot ${feedConnected ? "bg-maw-safe" : "bg-maw-critical animate-maw-alert"}`} />
+            {feedConnected ? "Live feed" : "Live feed disconnected"}
           </div>
         </div>
       </section>
@@ -148,8 +151,10 @@ export default function Dashboard() {
                     <Train size={12} /> TRAIN
                   </span>
                 )}
-                <span className="hidden md:block text-[11px] font-mono text-maw-text-subtle uppercase w-24 text-right">
-                  {String(crossing.barrierStatus || "-")} barrier
+                <span className="hidden md:block text-[11px] font-mono text-maw-text-subtle uppercase w-28 text-right">
+                  {crossing.mawState
+                    ? `${crossing.mawState.replace("_", " ")} · ${crossing.fusionScore?.toFixed(2) ?? "-"}`
+                    : `${String(crossing.barrierStatus || "-")} barrier`}
                 </span>
                 <StatusBadge status={crossing.status} />
                 <ArrowUpRight size={14} className="text-maw-text-subtle shrink-0" />

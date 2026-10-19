@@ -15,6 +15,7 @@ export type Acknowledgement = {
   email: string;
   at: string;
   score: number | null;
+  took_s?: number | null;
 };
 
 export type CrossingState = {
@@ -40,15 +41,20 @@ export type CrossingState = {
   received_at: string | null;
   server_ts: string;
   acknowledged: Acknowledgement | null;
+  entered_at: string;
+  barrier_status: 'open' | 'closed';
+  close_deadline_s: number;
+  close_deadline_at: string | null;
+  ack_overdue: boolean;
 };
 
 export type MawEvent = {
   id: string;
-  event_type: 'maw_state' | 'maw_ack' | 'maw_score_mismatch';
+  event_type: 'maw_state' | 'maw_ack' | 'maw_ack_overdue' | 'maw_score_mismatch' | 'device_status';
   title: string;
   description: string;
   occurred_at: string;
-  metadata?: { from?: MawState; to?: MawState; duration_s?: number | null; cause?: string | null };
+  metadata?: { from?: MawState | 'connected' | 'disconnected' | null; to?: MawState | 'connected' | 'disconnected'; duration_s?: number | null; cause?: string | null };
 };
 
 export type Operator = { id: string; email: string; name: string; role: string };

@@ -18,6 +18,8 @@ export const SENSORS = [
   { field: 's_norm', sensor: 'Suara', hardware: 'MAX9814' },
 ];
 
+export const NODE_STATUSES = ['SAFE', 'WARNING', 'DANGER'];
+
 export const DEFAULT_CONFIG = {
   weights: { v_norm: 0.35, l_norm: 0.3, m_norm: 0.2, s_norm: 0.15 },
   T_TUTUP: 0.6,
@@ -26,6 +28,7 @@ export const DEFAULT_CONFIG = {
   STALE_MAX_S: 15,
   HEARTBEAT_S: 5,
   SCORE_TOL: 0.02,
+  CLOSE_DEADLINE_S: 20,
   DEDUP_S: 2,
   CLOCK_SKEW_S: 60,
 };
@@ -66,6 +69,9 @@ export function validatePayload(raw, knownNodes = null) {
     fusion = clamp01(p.fusion_score);
   }
 
+  // Firmware status values (agreed): SAFE | WARNING | DANGER.
+  if (typeof p.status === 'string' && !NODE_STATUSES.includes(p.status)) warnings.push({ code: 'unknown_status', value: p.status });
+
   const incomplete = missing.length > 0 || fusion === null || typeof p.status !== 'string';
   if (incomplete) warnings.push({ code: 'incomplete_payload', missing: [...missing, ...(fusion === null ? ['fusion_score'] : []), ...(typeof p.status !== 'string' ? ['status'] : [])] });
 
@@ -81,6 +87,7 @@ export function validatePayload(raw, knownNodes = null) {
       primary_missing: missing.includes('v_norm'),
       fusion_score: fusion,
       danger: p.status === 'DANGER',
+      warning: p.status === 'WARNING',
       status: typeof p.status === 'string' ? p.status : null,
       seq: isNum(p.seq) ? p.seq : null,
     },
@@ -163,8 +170,10 @@ export function evaluateNode(ns, now, config = DEFAULT_CONFIG, externalFault = n
       ns.latched_before_fault = false;
     }
 
-    const score = last.score_effective;
-    const closing = score >= config.T_TUTUP || last.danger;
+    // R5: DANGER always closes. WARNING (R5b) never allows less than SIAGA,
+    // and keeps a closure latched like a score >= T_SIAGA would.
+    const score = last.warning ? Math.max(last.score_effective, config.T_SIAGA) : last.score_effective;
+    const closing = last.score_effective >= config.T_TUTUP || last.danger;
     let next;
     if (closing) {
       next = 'TUTUP';

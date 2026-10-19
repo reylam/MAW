@@ -1,6 +1,7 @@
 import { useEffect } from 'react';
 import { X, MapPin } from 'lucide-react';
 import StatusBadge from '../ui/StatusBadge';
+import { NODE_SENSORS } from '../../lib/adapters';
 
 export default function CrossingDetailModal({ crossing, onClose }) {
   useEffect(() => {
@@ -9,14 +10,11 @@ export default function CrossingDetailModal({ crossing, onClose }) {
     return () => window.removeEventListener('keydown', onKey);
   }, [onClose]);
 
-  const sensors = [
-    { name: 'MPU6050', type: 'Vibration', val: `${crossing.sensors.vibration ?? 0} g`, status: 'online' },
-    { name: 'Hall Effect', type: 'Magnetic', val: `${crossing.sensors.magnetic ?? 0} T`, status: 'online' },
-    { name: 'HMC5883L', type: 'Compass', val: `${((crossing.sensors.magnetic ?? 0) * 1.5).toFixed(2)} µT`, status: 'online' },
-    { name: 'MAX9814', type: 'Acoustic', val: `${crossing.sensors.acoustic ?? 0} dB`, status: 'online' },
-    { name: 'ESP32', type: 'MCU', val: 'Operational', status: 'online' },
-    { name: 'LoRa SX1278', type: 'Transceiver', val: crossing.rssi != null ? `${crossing.rssi} dBm` : '-', status: crossing.connectivity },
-  ];
+  // Normalized values (0-1) from the sensor node; a sensor without a value is not reading.
+  const sensors = NODE_SENSORS.map((s) => {
+    const v = crossing.sensors[s.field];
+    return { name: s.hw, type: s.label, val: v != null ? v.toFixed(2) : 'No data', status: v != null ? 'online' : 'offline' };
+  });
 
   const metrics = [
     { label: 'Train detection', value: crossing.trainDetected ? 'DETECTED' : 'CLEAR', danger: crossing.trainDetected },

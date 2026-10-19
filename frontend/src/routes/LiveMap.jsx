@@ -2,7 +2,6 @@ import { useState, useEffect, useCallback } from 'react';
 import { MapContainer, TileLayer, Marker, Popup, Polyline, useMapEvents, useMap, GeoJSON, LayersControl, LayerGroup, ZoomControl } from 'react-leaflet';
 import L from 'leaflet';
 import { useCrossingsLive } from '../hooks/useCrossingsLive';
-import { useSimulationStore } from '../store/simulationStore';
 import { hasValidCoordinates } from '../lib/adapters';
 import { LocateFixed, ZoomIn, ZoomOut, Train, Loader } from 'lucide-react';
 import 'leaflet/dist/leaflet.css';
@@ -296,9 +295,7 @@ export default function LiveMap() {
     setSelectedCrossing(crossing);
   };
 
-  const { crossingStatuses } = useSimulationStore();
-  const { data, error: crossingsError } = useCrossingsLive();
-  const crossings = data.map((c) => ({ ...c, status: crossingStatuses[c.id] || c.status }));
+  const { data: crossings, error: crossingsError } = useCrossingsLive();
 
   const safeCount = crossings.filter(c => c.status === 'safe').length;
   const warningCount = crossings.filter(c => c.status === 'warning').length;

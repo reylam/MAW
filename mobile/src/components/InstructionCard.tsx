@@ -1,8 +1,8 @@
 import { useEffect, useRef } from 'react';
 import { Animated, StyleSheet, Text, View } from 'react-native';
-import { MaterialCommunityIcons } from '@expo/vector-icons';
+import { CircleAlert, Hourglass, OctagonAlert, ShieldCheck, TriangleAlert } from 'lucide-react-native';
 import { clock, decimal, STATE_LABEL } from '@/lib/format';
-import { radius, space, statusColor, type Theme } from '@/theme/tokens';
+import { fillColor, font, radius, space, type Theme } from '@/theme/tokens';
 import type { DisplayState } from '@/hooks/useDisplayState';
 import type { CrossingState } from '@/types/maw';
 import AckButton from './AckButton';
@@ -10,12 +10,12 @@ import AckButton from './AckButton';
 type Sizes = { title: number; subtitle: number; body: number };
 
 const ICON = {
-  AMAN: 'check-circle',
-  SIAGA: 'alert',
-  TUTUP: 'alert-octagon',
-  MENUNGGU_AMAN: 'timer-sand',
-  CEK_MANUAL: 'alert',
-} as const;
+  AMAN: ShieldCheck,
+  SIAGA: TriangleAlert,
+  TUTUP: OctagonAlert,
+  MENUNGGU_AMAN: Hourglass,
+  CEK_MANUAL: CircleAlert,
+};
 
 const TITLE = {
   AMAN: 'PALANG BOLEH DIBUKA',
@@ -38,12 +38,14 @@ function Stripes({ color }: { color: string }) {
   );
 }
 
+// The dominant block (DESIGN.md 5.1): full status color, verb title, short reason.
 export default function InstructionCard({
   theme,
   sizes,
   display,
   crossing,
   holdRemainingS,
+  closeLeftS,
   ack,
 }: {
   theme: Theme;
@@ -51,16 +53,18 @@ export default function InstructionCard({
   display: DisplayState;
   crossing: CrossingState | undefined;
   holdRemainingS: number | null;
+  closeLeftS: number | null;
   ack: { onPress: () => void; busy: boolean; error: string | null };
 }) {
   const state = display.state;
-  const fill = statusColor(theme, state);
-  const on = theme.onStatus;
+  const fill = fillColor(theme, state);
+  const on = theme.onFill;
+  const Icon = ICON[state];
 
   // 150 ms color transition between states.
   const prevFill = useRef(fill);
-  const progress = useRef(new Animated.Value(1)).current;
   const from = useRef(fill);
+  const progress = useRef(new Animated.Value(1)).current;
   if (prevFill.current !== fill) {
     from.current = prevFill.current;
     prevFill.current = fill;
@@ -72,8 +76,7 @@ export default function InstructionCard({
   const background = progress.interpolate({ inputRange: [0, 1], outputRange: [from.current, fill] });
 
   // Slow 1 Hz pulse on TUTUP until the closure is confirmed.
-  const acknowledged = Boolean(crossing?.acknowledged);
-  const pulsing = state === 'TUTUP' && !acknowledged;
+  const pulsing = state === 'TUTUP' && !crossing?.acknowledged;
   const pulse = useRef(new Animated.Value(1)).current;
   useEffect(() => {
     if (!pulsing) { pulse.setValue(1); return; }
@@ -97,63 +100,77 @@ export default function InstructionCard({
     default: subtitle = 'Ikuti SOP manual, jangan andalkan layar ini.';
   }
 
+  const details: string[] = [];
+  if (state === 'CEK_MANUAL') {
+    if (display.cause) details.push(`Penyebab: ${display.cause}`);
+    if (crossing?.received_at) details.push(`Data terakhir ${clock(crossing.received_at, true)}`);
+    if (display.lastKnown) details.push(`Status terakhir: ${STATE_LABEL[display.lastKnown]}`);
+  }
+
   return (
     <Animated.View
       accessibilityRole="alert"
       accessibilityLabel={`${TITLE[state]}. ${subtitle}`}
       style={[styles.card, { backgroundColor: background }]}
     >
-      {state === 'CEK_MANUAL' && <Stripes color={on === '#FFFFFF' ? 'rgba(255,255,255,0.09)' : 'rgba(0,0,0,0.10)'} />}
+      {state === 'CEK_MANUAL' && <Stripes color={theme.dark ? 'rgba(0,0,0,0.10)' : 'rgba(255,255,255,0.09)'} />}
+
+      <Text style={[styles.eyebrow, { color: on }]}>Instruksi palang</Text>
+
       <Animated.View style={[styles.inner, { opacity: pulse }]}>
-        <MaterialCommunityIcons name={ICON[state]} size={sizes.title * 1.4} color={on} />
+        <View style={[styles.iconRing, { borderColor: on }]}>
+          <Icon size={sizes.title * 1.05} color={on} strokeWidth={2.2} />
+        </View>
         <Text style={[styles.title, { color: on, fontSize: sizes.title, lineHeight: sizes.title * 1.08 }]}>{TITLE[state]}</Text>
         <Text style={[styles.subtitle, { color: on, fontSize: sizes.subtitle }]}>{subtitle}</Text>
 
+        {(state === 'TUTUP' || state === 'MENUNGGU_AMAN') && closeLeftS != null && (
+          <View style={[styles.deadline, { borderColor: on }]}>
+            <Text style={[styles.deadlineText, { color: on }]}>
+              {closeLeftS > 0 ? `Konfirmasi dalam ${closeLeftS} dtk` : `Terlambat ${-closeLeftS} dtk, segera konfirmasi`}
+            </Text>
+          </View>
+        )}
+
         {state === 'MENUNGGU_AMAN' && (
           <View style={styles.countdown}>
-            <View style={[styles.ring, { borderColor: on }]}>
-              <Text style={[styles.ringText, { color: on }]}>{hold}</Text>
-              <Text style={[styles.ringUnit, { color: on }]}>dtk</Text>
-            </View>
-            <View style={[styles.track, { borderColor: on }]}>
+            <Text style={[styles.countText, { color: on }]}>{hold}<Text style={styles.countUnit}> dtk</Text></Text>
+            <View style={[styles.track, { backgroundColor: theme.dark ? 'rgba(0,0,0,0.18)' : 'rgba(255,255,255,0.25)' }]}>
               <View style={[styles.trackFill, { backgroundColor: on, width: `${Math.min(100, (1 - hold / holdTotal) * 100)}%` }]} />
             </View>
           </View>
         )}
 
-        {state === 'CEK_MANUAL' && (
-          <View style={styles.details}>
-            {display.cause && <Text style={[styles.detail, { color: on, fontSize: sizes.body }]}>Penyebab: {display.cause}</Text>}
-            {crossing?.received_at && (
-              <Text style={[styles.detail, { color: on, fontSize: sizes.body }]}>Data terakhir diterima {clock(crossing.received_at, true)}</Text>
-            )}
-            {display.lastKnown && (
-              <Text style={[styles.detail, { color: on, fontSize: sizes.body }]}>Status terakhir diketahui: {STATE_LABEL[display.lastKnown]}</Text>
-            )}
+        {details.length > 0 && (
+          <View style={[styles.details, { borderColor: theme.dark ? 'rgba(0,0,0,0.2)' : 'rgba(255,255,255,0.3)' }]}>
+            {details.map((d) => (
+              <Text key={d} style={[styles.detail, { color: on, fontSize: sizes.body - 1 }]}>{d}</Text>
+            ))}
           </View>
         )}
       </Animated.View>
 
-      {state === 'TUTUP' && (
-        <AckButton theme={theme} acknowledged={crossing?.acknowledged ?? null} {...ack} />
-      )}
+      {(state === 'TUTUP' || (state === 'MENUNGGU_AMAN' && !crossing?.acknowledged)) && <AckButton theme={theme} fill={fill} acknowledged={crossing?.acknowledged ?? null} {...ack} />}
     </Animated.View>
   );
 }
 
 const styles = StyleSheet.create({
   card: { flexGrow: 1, borderRadius: radius.card, padding: space.xl, gap: space.lg, overflow: 'hidden', justifyContent: 'center' },
-  inner: { alignItems: 'center', gap: space.md },
-  title: { fontWeight: '800', textAlign: 'center', letterSpacing: 0.5 },
-  subtitle: { fontWeight: '500', textAlign: 'center' },
-  details: { gap: space.xs, alignSelf: 'stretch' },
-  detail: { fontWeight: '500', textAlign: 'center' },
-  countdown: { alignItems: 'center', gap: space.md, alignSelf: 'stretch' },
-  ring: { width: 96, height: 96, borderRadius: 48, borderWidth: 5, alignItems: 'center', justifyContent: 'center' },
-  ringText: { fontSize: 34, fontWeight: '800', fontVariant: ['tabular-nums'] },
-  ringUnit: { fontSize: 12, fontWeight: '600', marginTop: -4 },
-  track: { height: 10, alignSelf: 'stretch', borderRadius: 5, borderWidth: 1.5, overflow: 'hidden' },
-  trackFill: { height: '100%' },
+  eyebrow: { fontFamily: font.mono, fontSize: 10, letterSpacing: 1.6, textTransform: 'uppercase', opacity: 0.85, position: 'absolute', top: space.lg, left: space.xl },
+  inner: { alignItems: 'center', gap: space.md, paddingTop: space.lg },
+  iconRing: { padding: 12, borderRadius: 999, borderWidth: 2 },
+  title: { fontFamily: font.displayBold, textAlign: 'center', letterSpacing: -0.3 },
+  subtitle: { fontFamily: font.sansMedium, textAlign: 'center' },
+  countdown: { alignItems: 'center', gap: space.sm, alignSelf: 'stretch' },
+  countText: { fontFamily: font.monoBold, fontSize: 40, fontVariant: ['tabular-nums'] },
+  countUnit: { fontFamily: font.mono, fontSize: 16 },
+  track: { height: 8, alignSelf: 'stretch', borderRadius: 4, overflow: 'hidden' },
+  trackFill: { height: '100%', borderRadius: 4 },
+  deadline: { borderWidth: 1.5, borderRadius: radius.md, paddingHorizontal: space.md, paddingVertical: 6 },
+  deadlineText: { fontFamily: font.monoBold, fontSize: 14, fontVariant: ['tabular-nums'] },
+  details: { alignSelf: 'stretch', borderTopWidth: 1, paddingTop: space.md, gap: 4 },
+  detail: { fontFamily: font.sans, textAlign: 'center' },
   clip: { overflow: 'hidden', borderRadius: radius.card },
   stripeField: { position: 'absolute', top: -600, left: -600, width: 2000, height: 2000, transform: [{ rotate: '45deg' }] },
   stripe: { height: 14, marginBottom: 14 },

@@ -30,6 +30,7 @@ export function loadMawConfig() {
     STALE_MAX_S: num('MAW_STALE_MAX_S', d.STALE_MAX_S),
     HEARTBEAT_S: num('MAW_HEARTBEAT_S', d.HEARTBEAT_S),
     SCORE_TOL: num('MAW_SCORE_TOL', d.SCORE_TOL),
+    CLOSE_DEADLINE_S: num('MAW_CLOSE_DEADLINE_S', d.CLOSE_DEADLINE_S),
     DEDUP_S: d.DEDUP_S,
     CLOCK_SKEW_S: d.CLOCK_SKEW_S,
   };
@@ -41,5 +42,5 @@ export function loadNodeMap() {
 }
 
 export function mawNodeTopic() {
-  return process.env.MAW_NODE_TOPIC || 'maw/node/data';
+  return process.env.MAW_NODE_TOPIC || 'mqx/node/data';
 }

@@ -1,4 +1,7 @@
+import { useEffect } from 'react';
 import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom';
+import { startMawFeed } from './store/mawFeedStore';
+import DeviceAlerts from './components/watch/DeviceAlerts';
 import Sidebar from './components/layout/Sidebar';
 import TopBar from './components/layout/TopBar';
 import ProtectedRoute from './components/auth/ProtectedRoute';
@@ -16,11 +19,15 @@ import SimulationCenter from './routes/SimulationCenter';
 import Login from './routes/Login';
 
 function DashboardLayout({ children }) {
+  // Live MAW feed for every authenticated page.
+  useEffect(() => startMawFeed(), []);
+
   return (
     <div className="app-shell flex h-screen bg-maw-bg">
       <Sidebar />
       <main className="flex-1 flex flex-col overflow-hidden">
         <TopBar title="Smart Rail Guard" />
+        <DeviceAlerts />
         <div className="flex-1 overflow-y-auto pb-16 lg:pb-0">{children}</div>
       </main>
     </div>

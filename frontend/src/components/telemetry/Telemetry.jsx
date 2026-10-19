@@ -4,84 +4,92 @@ import { Card, CardHeader } from '../ui/Card';
 import { ApiErrorState, EmptyState, LoadingState } from '../ui/States';
 import StatusBadge from '../ui/StatusBadge';
 import { Activity, Cpu } from 'lucide-react';
-import { telemetryService } from '../../services/telemetryService';
-import { deviceService } from '../../services/deviceService';
-import { METRIC_KEYS } from '../../lib/adapters';
+import apiClient from '../../services/apiClient';
+import { useMawFeed } from '../../store/mawFeedStore';
+import { NODE_SENSORS } from '../../lib/adapters';
+
+/*
+  Real sensor node data (mqx/node/data -> node_readings): Fusion Score and the
+  four normalized sensor values. History comes from the API; new messages are
+  appended live from the WebSocket feed.
+*/
 
 const TIME_RANGES = [
-  { label: '1H', value: '1h', hours: 1 },
-  { label: '6H', value: '6h', hours: 6 },
-  { label: '12H', value: '12h', hours: 12 },
-  { label: '24H', value: '24h', hours: 24 },
-  { label: '7D', value: '7d', hours: 168 },
+  { label: '15M', minutes: 15 },
+  { label: '1H', minutes: 60 },
+  { label: '6H', minutes: 360 },
+  { label: '24H', minutes: 1440 },
 ];
 
-// Pivot telemetry rows (one row per metric sample) into chart points keyed by timestamp.
-function toSeries(rows) {
-  const byTime = new Map();
-  for (const row of rows) {
-    const key = METRIC_KEYS[row.metric];
-    if (!key) continue;
-    const point = byTime.get(row.recorded_at) || { timestamp: row.recorded_at };
-    point[key] = Number(row.value);
-    byTime.set(row.recorded_at, point);
-  }
-  return [...byTime.values()]
-    .sort((a, b) => new Date(a.timestamp) - new Date(b.timestamp))
-    .map((p) => ({ ...p, time: new Date(p.timestamp).toLocaleTimeString('id-ID', { hour: '2-digit', minute: '2-digit' }) }));
-}
+const NODE_STATUS_TONE = { SAFE: 'safe', WARNING: 'warning', DANGER: 'critical' };
 
-// Latest non-empty value of a metric (series may have gaps per metric).
-function latest(series, key) {
-  for (let i = series.length - 1; i >= 0; i--) if (series[i][key] != null) return series[i][key];
-  return null;
+function toPoint(r) {
+  return {
+    t: new Date(r.received_at).getTime(),
+    fusion: r.score_calc,
+    ...Object.fromEntries(NODE_SENSORS.map((s) => [s.field, r.normalisasi?.[s.field] ?? null])),
+    raw: r.data_mentah ?? null,
+    status: r.status ?? null,
+    node_id: r.node_id,
+  };
 }
 
 export default function Telemetry({ crossingId, crossing }) {
-  const [timeRange, setTimeRange] = useState('24h');
-  const [rows, setRows] = useState([]);
-  const [hardware, setHardware] = useState([]);
-  const [selectedMetric, setSelectedMetric] = useState('vibration');
+  const [minutes, setMinutes] = useState(60);
+  const [points, setPoints] = useState([]);
+  const [selected, setSelected] = useState('fusion');
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState(null);
   const [reloadKey, setReloadKey] = useState(0);
-
-  const selectedHours = TIME_RANGES.find((r) => r.value === timeRange)?.hours || 1;
+  const live = useMawFeed((s) => s.states[crossingId]);
 
   useEffect(() => {
     let active = true;
     setIsLoading(true);
     setError(null);
-    Promise.all([
-      telemetryService.getAll({ crossing_id: crossingId, limit: 1000 }),
-      deviceService.getAll({ crossing_id: crossingId }).catch(() => ({ data: [] })),
-    ])
-      .then(([tel, dev]) => {
-        if (!active) return;
-        setRows(tel.data || []);
-        setHardware(dev.data || []);
-      })
+    apiClient
+      .request(`/crossings/${crossingId}/readings?minutes=${minutes}`)
+      .then((res) => { if (active) setPoints((res.data || []).map(toPoint)); })
       .catch((err) => { if (active) setError(err); })
       .finally(() => { if (active) setIsLoading(false); });
     return () => { active = false; };
-  }, [crossingId, reloadKey]);
+  }, [crossingId, minutes, reloadKey]);
 
-  const series = useMemo(() => toSeries(rows), [rows]);
-  const data = useMemo(() => {
-    const since = Date.now() - selectedHours * 3600000;
-    return series.filter((p) => new Date(p.timestamp).getTime() >= since);
-  }, [series, selectedHours]);
+  // Append each new node message from the live feed.
+  useEffect(() => {
+    if (!live?.received_at) return;
+    const t = new Date(live.received_at).getTime();
+    setPoints((prev) => {
+      if (prev.length && prev[prev.length - 1].t >= t) return prev;
+      const point = {
+        t,
+        fusion: live.fusion_score,
+        ...Object.fromEntries((live.contributions || []).map((c) => [c.field, c.value])),
+        raw: null,
+        status: live.node.status,
+        node_id: live.node.node_id,
+      };
+      const since = Date.now() - minutes * 60_000;
+      return [...prev.filter((p) => p.t >= since), point];
+    });
+  }, [live?.received_at, live, minutes]);
 
-  const fmt = (v, digits) => (v == null ? '-' : Number(v).toFixed(digits));
+  const data = useMemo(
+    () => points.map((p) => ({ ...p, time: new Date(p.t).toLocaleTimeString('id-ID', { hour: '2-digit', minute: '2-digit', second: minutes <= 60 ? '2-digit' : undefined }) })),
+    [points, minutes],
+  );
+
+  const last = points[points.length - 1];
+  const lastRaw = [...points].reverse().find((p) => p.raw)?.raw ?? null;
+  const thresholds = live?.thresholds ?? { siaga: 0.4, tutup: 0.6 };
+  const weights = live?.weights;
+
   const metrics = [
-    { key: 'vibration', label: 'Vibration', color: '#005AA9', unit: 'g', current: fmt(latest(series, 'vibration'), 2), threshold: 0.75, over: (v) => v >= 0.75 },
-    { key: 'magnetic', label: 'Magnetic field', color: '#0F8A5F', unit: 'µT', current: fmt(latest(series, 'magnetic'), 1), threshold: 40, over: (v) => v >= 40 },
-    { key: 'acoustic', label: 'Sound level', color: '#F58220', unit: 'dB', current: fmt(latest(series, 'acoustic'), 0), threshold: 70, over: (v) => v >= 70 },
-    { key: 'rssi', label: 'Signal strength', color: '#64748B', unit: 'dBm', current: crossing?.rssi ?? '-', threshold: -90, over: () => false },
+    { key: 'fusion', label: 'Fusion Score', hw: 'Recomputed by backend' },
+    ...NODE_SENSORS.map((s) => ({ key: s.field, label: s.label, color: s.color, hw: s.hw })),
   ];
-
-  const selected = metrics.find((m) => m.key === selectedMetric);
-  const hasSeries = data.some((p) => p[selectedMetric] != null);
+  const sel = metrics.find((m) => m.key === selected);
+  const hasSeries = data.some((p) => p[selected] != null);
 
   if (error) {
     return <Card><ApiErrorState error={error} onRetry={() => setReloadKey((k) => k + 1)} /></Card>;
@@ -90,28 +98,28 @@ export default function Telemetry({ crossingId, crossing }) {
   return (
     <div className="space-y-5">
       {/* Current readings - click to chart. */}
-      <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
-        {metrics.map((metric) => {
-          const breached = metric.over(parseFloat(metric.current));
-          const active = selectedMetric === metric.key;
+      <div className="grid grid-cols-2 lg:grid-cols-5 gap-4">
+        {metrics.map((m) => {
+          const value = last?.[m.key];
+          const breach = m.key === 'fusion' && value != null && value >= thresholds.tutup;
+          const active = selected === m.key;
           return (
             <button
-              key={metric.key}
-              onClick={() => setSelectedMetric(metric.key)}
-              className={`text-left bg-maw-card rounded-maw border p-4 transition-colors ${
-                active ? 'border-maw-primary' : 'border-maw-border hover:border-maw-border-strong'
-              }`}
+              key={m.key}
+              onClick={() => setSelected(m.key)}
+              className={`text-left bg-maw-card rounded-maw border p-4 transition-colors ${active ? 'border-maw-primary' : 'border-maw-border hover:border-maw-border-strong'}`}
             >
               <div className="flex items-center justify-between">
-                <span className="text-xs text-maw-text-muted">{metric.label}</span>
-                {breached && <span className="status-dot bg-maw-critical animate-maw-alert" />}
+                <span className="text-xs text-maw-text-muted">{m.label}</span>
+                {breach && <span className="status-dot bg-maw-critical animate-maw-alert" />}
               </div>
-              <div className="flex items-baseline gap-1 mt-2">
-                <span className="text-2xl font-display font-bold" style={{ color: metric.color }}>
-                  {metric.current}
-                </span>
-                <span className="text-xs text-maw-text-subtle">{metric.unit}</span>
+              <div
+                className={`text-2xl font-display font-bold mt-2 ${m.key === 'fusion' ? 'text-maw-text-main' : ''}`}
+                style={m.key === 'fusion' ? undefined : { color: m.color }}
+              >
+                {value != null ? value.toFixed(2) : '-'}
               </div>
+              <div className="text-[11px] text-maw-text-subtle mt-1 truncate">{m.hw}</div>
             </button>
           );
         })}
@@ -120,41 +128,29 @@ export default function Telemetry({ crossingId, crossing }) {
       {/* Chart */}
       <Card>
         <CardHeader
-          title={`${selected?.label} over time`}
-          eyebrow={`Last ${selectedHours}h · ${crossing?.name || 'Crossing'}`}
+          title={`${sel.label} over time`}
+          eyebrow={`${crossing?.name || 'Crossing'} · ${points.length} samples`}
           icon={Activity}
           action={
-            <div className="flex items-center gap-4">
-              <div className="flex items-center gap-1">
-                {TIME_RANGES.map((r) => (
-                  <button
-                    key={r.value}
-                    onClick={() => setTimeRange(r.value)}
-                    className={`px-2 py-1 rounded-maw-sm text-[11px] font-mono font-semibold ${
-                      timeRange === r.value ? 'bg-maw-primary text-white' : 'text-maw-text-muted hover:text-maw-text-main'
-                    }`}
-                  >
-                    {r.label}
-                  </button>
-                ))}
-              </div>
-              <div className="text-right">
-                <div className="text-[11px] text-maw-text-subtle">Threshold</div>
-                <div className="text-sm font-mono font-semibold text-maw-accent">{selected?.threshold} {selected?.unit}</div>
-              </div>
+            <div className="flex items-center gap-1">
+              {TIME_RANGES.map((r) => (
+                <button
+                  key={r.minutes}
+                  onClick={() => setMinutes(r.minutes)}
+                  className={`px-2 py-1 rounded-maw-sm text-[11px] font-mono font-semibold ${minutes === r.minutes ? 'bg-maw-primary text-white' : 'text-maw-text-muted hover:text-maw-text-main'}`}
+                >
+                  {r.label}
+                </button>
+              ))}
             </div>
           }
         />
         <div className="p-4 sm:p-5">
           {isLoading ? (
-            <div className="h-72"><LoadingState label="Loading telemetry…" /></div>
+            <div className="h-72"><LoadingState label="Loading node data…" /></div>
           ) : !hasSeries ? (
             <div className="h-72 flex items-center justify-center">
-              <EmptyState
-                icon={Activity}
-                title="No telemetry in this range"
-                description={selectedMetric === 'rssi' ? 'Signal strength history is not recorded yet.' : 'Try a longer time range.'}
-              />
+              <EmptyState icon={Activity} title="No node data in this range" description="Data appears once the sensor node publishes to the MQTT topic." />
             </div>
           ) : (
             <div className="h-72">
@@ -162,22 +158,25 @@ export default function Telemetry({ crossingId, crossing }) {
                 <AreaChart data={data} margin={{ top: 8, right: 8, left: -12, bottom: 0 }}>
                   <defs>
                     <linearGradient id="maw-metric-fill" x1="0" y1="0" x2="0" y2="1">
-                      <stop offset="0%" stopColor={selected?.color} stopOpacity={0.18} />
-                      <stop offset="100%" stopColor={selected?.color} stopOpacity={0} />
+                      <stop offset="0%" stopColor={sel.key === 'fusion' ? 'var(--maw-primary)' : sel.color} stopOpacity={0.18} />
+                      <stop offset="100%" stopColor={sel.key === 'fusion' ? 'var(--maw-primary)' : sel.color} stopOpacity={0} />
                     </linearGradient>
                   </defs>
                   <CartesianGrid strokeDasharray="3 3" stroke="var(--maw-border)" vertical={false} />
                   <XAxis dataKey="time" stroke="var(--maw-text-subtle)" fontSize={10} fontFamily="IBM Plex Mono" tickLine={false} minTickGap={32} />
-                  <YAxis stroke="var(--maw-text-subtle)" fontSize={10} fontFamily="IBM Plex Mono" tickLine={false} axisLine={false} width={44} />
+                  <YAxis domain={[0, 1]} stroke="var(--maw-text-subtle)" fontSize={10} fontFamily="IBM Plex Mono" tickLine={false} axisLine={false} width={44} />
                   <Tooltip
                     contentStyle={{ backgroundColor: 'var(--maw-card)', border: '1px solid var(--maw-border)', borderRadius: '8px', color: 'var(--maw-text-main)', fontSize: 12 }}
-                    itemStyle={{ color: selected?.color }}
                     labelStyle={{ color: 'var(--maw-text-subtle)', fontWeight: 600 }}
+                    formatter={(v) => [Number(v).toFixed(2), sel.label]}
                   />
-                  {selected && selected.key !== 'rssi' && (
-                    <ReferenceLine y={selected.threshold} stroke="var(--maw-accent)" strokeDasharray="4 4" strokeWidth={1} />
+                  {sel.key === 'fusion' && (
+                    <>
+                      <ReferenceLine y={thresholds.siaga} stroke="var(--maw-warning)" strokeDasharray="4 4" label={{ value: 'siaga', fill: 'var(--maw-warning)', fontSize: 10, position: 'insideTopRight' }} />
+                      <ReferenceLine y={thresholds.tutup} stroke="var(--maw-critical)" strokeDasharray="4 4" label={{ value: 'tutup', fill: 'var(--maw-critical)', fontSize: 10, position: 'insideTopRight' }} />
+                    </>
                   )}
-                  <Area type="monotone" dataKey={selectedMetric} stroke={selected?.color} strokeWidth={2} fillOpacity={1} fill="url(#maw-metric-fill)" />
+                  <Area type="monotone" dataKey={selected} stroke={sel.key === 'fusion' ? 'var(--maw-primary)' : sel.color} strokeWidth={2} fillOpacity={1} fill="url(#maw-metric-fill)" isAnimationActive={false} connectNulls />
                 </AreaChart>
               </ResponsiveContainer>
             </div>
@@ -185,28 +184,51 @@ export default function Telemetry({ crossingId, crossing }) {
         </div>
       </Card>
 
-      {/* Sensor status */}
+      {/* Latest node message, for technicians (raw values are not shown to petugas). */}
       <Card>
-        <CardHeader title="Sensor status" eyebrow="On-site hardware" />
-        {hardware.length === 0 ? (
-          <EmptyState icon={Cpu} title="No hardware reporting" description="Components appear here once they publish over MQTT." />
+        <CardHeader
+          title="Latest node message"
+          eyebrow={last ? `${last.node_id} · ${new Date(last.t).toLocaleTimeString('id-ID')}` : 'Sensor node'}
+          icon={Cpu}
+          action={last?.status && <StatusBadge status={NODE_STATUS_TONE[last.status] || 'offline'} label={last.status} />}
+        />
+        {!last ? (
+          <EmptyState icon={Cpu} title="No message yet" description="Waiting for the sensor node to publish." />
         ) : (
-          <div className="grid grid-cols-2 lg:grid-cols-4 gap-px bg-maw-border-subtle">
-            {hardware.map((hw) => (
-              <div key={hw.id} className="p-4 bg-maw-card">
-                <div className="flex items-center justify-between gap-2">
-                  <span className="text-sm font-medium text-maw-text-main truncate">{hw.name || hw.id}</span>
-                  <StatusBadge
-                    status={hw.status === 'online' ? 'safe' : hw.status === 'degraded' ? 'warning' : 'offline'}
-                    label={hw.status === 'online' ? 'OK' : hw.status || 'Unknown'}
-                  />
-                </div>
-                <div className="text-xs text-maw-text-subtle mt-1.5">{[hw.component_type, hw.model].filter(Boolean).join(' · ') || '-'}</div>
-                <div className="text-xs text-maw-text-subtle font-mono mt-0.5">
-                  {hw.last_seen_at ? new Date(hw.last_seen_at).toLocaleTimeString('id-ID') : '-'}
-                </div>
-              </div>
-            ))}
+          <div className="overflow-x-auto">
+            <table className="w-full text-sm">
+              <thead>
+                <tr className="text-left text-[11px] uppercase tracking-wider text-maw-text-subtle">
+                  <th className="px-4 sm:px-5 py-2 font-semibold">Sensor</th>
+                  <th className="px-3 py-2 font-semibold text-right">Raw</th>
+                  <th className="px-3 py-2 font-semibold text-right">Normalized</th>
+                  <th className="px-3 py-2 font-semibold text-right">Weight</th>
+                  <th className="px-4 sm:px-5 py-2 font-semibold text-right">Contribution</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-maw-border-subtle font-mono">
+                {NODE_SENSORS.map((s) => {
+                  const v = last[s.field];
+                  const w = weights?.[s.field];
+                  return (
+                    <tr key={s.field}>
+                      <td className="px-4 sm:px-5 py-2.5 font-sans">
+                        <div className="text-maw-text-main font-medium">{s.label}</div>
+                        <div className="text-[11px] text-maw-text-subtle">{s.hw}</div>
+                      </td>
+                      <td className="px-3 py-2.5 text-right text-maw-text-muted">{lastRaw?.[s.raw] ?? '-'}</td>
+                      <td className="px-3 py-2.5 text-right text-maw-text-main">{v != null ? v.toFixed(2) : 'no data'}</td>
+                      <td className="px-3 py-2.5 text-right text-maw-text-muted">{w != null ? w.toFixed(2) : '-'}</td>
+                      <td className="px-4 sm:px-5 py-2.5 text-right text-maw-text-main font-semibold">{v != null && w != null ? (v * w).toFixed(3) : '-'}</td>
+                    </tr>
+                  );
+                })}
+                <tr className="bg-maw-hover">
+                  <td className="px-4 sm:px-5 py-2.5 font-sans font-semibold text-maw-text-main" colSpan={4}>Fusion Score (recomputed)</td>
+                  <td className="px-4 sm:px-5 py-2.5 text-right font-bold text-maw-text-main">{last.fusion != null ? last.fusion.toFixed(3) : '-'}</td>
+                </tr>
+              </tbody>
+            </table>
           </div>
         )}
       </Card>

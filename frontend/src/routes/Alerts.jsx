@@ -5,6 +5,7 @@ import { Card } from '../components/ui/Card';
 import { ApiErrorState, EmptyState, LoadingState } from '../components/ui/States';
 import { alertService } from '../services/alertService';
 import { toAlert } from '../lib/adapters';
+import { useMawFeed } from '../store/mawFeedStore';
 
 const FILTERS = ['all', 'critical', 'warning', 'system'];
 
@@ -30,7 +31,9 @@ export default function Alerts() {
       .finally(() => setLoading(false));
   }, []);
 
-  useEffect(() => { load(); }, [load]);
+  // MAW raises / acknowledges / resolves alerts on state changes: refetch then.
+  const changeKey = useMawFeed((s) => s.changeKey);
+  useEffect(() => { load(); }, [load, changeKey]);
 
   const updateAlert = async (action, id) => {
     try {

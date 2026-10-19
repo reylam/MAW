@@ -1,6 +1,5 @@
 import { useState } from 'react';
 import { useCrossingsLive } from '../hooks/useCrossingsLive';
-import { useSimulationStore } from '../store/simulationStore';
 import { Radio, ChevronRight, MapPin } from 'lucide-react';
 import { ApiErrorState, EmptyState, LoadingState } from '../components/ui/States';
 import CrossingDetailModal from '../components/crossings/CrossingDetailModal';
@@ -19,9 +18,7 @@ function DetailRow({ label, value, tone }) {
 
 export default function Crossings() {
   const [selectedCrossing, setSelectedCrossing] = useState(null);
-  const { crossingStatuses } = useSimulationStore();
-  const { data, loading, error, reload } = useCrossingsLive();
-  const crossings = data.map((c) => ({ ...c, status: crossingStatuses[c.id] || c.status }));
+  const { data: crossings, loading, error, reload } = useCrossingsLive();
 
   return (
     <div className="p-4 sm:p-6 lg:p-8 space-y-5 max-w-[1500px] mx-auto">

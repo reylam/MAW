@@ -5,8 +5,13 @@ import helmet from 'helmet';
 import morgan from 'morgan';
 import * as services from './services/index.js';
 import { isConnected } from './config/db.js';
-import { isMqttConnected } from './config/mqtt.js';
+import { isMqttConnected, isHardwareMqttConnected } from './config/mqtt.js';
 import { getEngine } from './maw/runtime.js';
+import * as simRunner from './maw/simRunner.js';
+
+const devOnly = (_req, res, next) => (process.env.NODE_ENV === 'production'
+  ? res.status(404).json({ success: false, error: { message: 'Route not found', code: 'ROUTE_NOT_FOUND' } })
+  : next());
 
 const app = express();
 app.use(helmet());
@@ -19,7 +24,8 @@ app.get('/api/health', (_req, res) => res.json({
   service: 'MAW API', 
   status: 'operational', 
   db: isConnected() ? 'mongodb' : 'demo',
-  mqtt: isMqttConnected() ? 'connected' : 'disconnected'
+  mqtt: isMqttConnected() ? 'connected' : 'disconnected',
+  mqtt_hardware: isHardwareMqttConnected() ? 'connected' : 'disconnected',
 }));
 
 // Crossings
@@ -202,7 +208,9 @@ app.post('/api/crossings/:id/ack', async (req, res) => {
     if (!authz.authorized) {
       return res.status(403).json({ success: false, error: { message: 'Operator is not authorized.' } });
     }
-    const result = getEngine().acknowledge(req.params.id, authz.operator);
+    // Email is authorized server-side; the web lets the operator pick a display name.
+    const who = { ...authz.operator, name: String(operator.name || '').trim() || authz.operator.name };
+    const result = getEngine().acknowledge(req.params.id, who);
     if (result.notFound) return res.status(404).json({ success: false, error: { message: 'Crossing is not monitored by any node' } });
     if (result.conflict) return res.status(409).json({ success: false, error: { message: result.conflict } });
     res.json({ success: true, data: result.data });
@@ -220,7 +228,7 @@ app.get('/api/crossings/:id/events', async (req, res) => {
     }
     const { data } = await services.eventService.getAll({
       crossing_id: req.params.id,
-      event_type: 'maw_state,maw_ack,maw_score_mismatch',
+      event_type: 'maw_state,maw_ack,maw_ack_overdue,maw_score_mismatch,device_status',
       since,
       limit,
     });
@@ -228,13 +236,35 @@ app.get('/api/crossings/:id/events', async (req, res) => {
   } catch (error) { res.status(500).json({ success: false, error: { message: error.message } }); }
 });
 
-// Feed a node payload without hardware (development/demo only).
-app.post('/api/maw/simulate', (req, res) => {
-  if (process.env.NODE_ENV === 'production') {
-    return res.status(404).json({ success: false, error: { message: 'Route not found', code: 'ROUTE_NOT_FOUND' } });
-  }
+// Real node data (node_readings) for the web telemetry charts, oldest first.
+app.get('/api/crossings/:id/readings', async (req, res) => {
+  try {
+    const minutes = Math.min(Number(req.query.minutes) || 60, 7 * 24 * 60);
+    const since = new Date(Date.now() - minutes * 60_000).toISOString();
+    const { data } = await services.readingService.list({ crossing_id: req.params.id, since, limit: req.query.limit || 2000 });
+    res.json({ success: true, data });
+  } catch (error) { res.status(500).json({ success: false, error: { message: error.message } }); }
+});
+
+// Feed one node payload without hardware (development/demo only).
+app.post('/api/maw/simulate', devOnly, (req, res) => {
   const result = getEngine().ingest(req.body || {}, { source: 'simulate' });
   res.status(result.accepted ? 200 : 422).json({ success: result.accepted, data: result });
+});
+
+// Simulation Center: run a scenario (scripts/scenarios.json) every heartbeat until stopped.
+app.get('/api/maw/sim', devOnly, (_req, res) => {
+  res.json({ success: true, data: { ...simRunner.status(), scenarios: simRunner.listScenarios() } });
+});
+
+app.post('/api/maw/sim/start', devOnly, (req, res) => {
+  const result = simRunner.start(req.body?.scenario);
+  if (result.error) return res.status(404).json({ success: false, error: { message: result.error } });
+  res.json({ success: true, data: result.data });
+});
+
+app.post('/api/maw/sim/stop', devOnly, (_req, res) => {
+  res.json({ success: true, data: simRunner.stop().data });
 });
 
 app.use((_req, res) => res.status(404).json({ success: false, error: { message: 'Route not found', code: 'ROUTE_NOT_FOUND' } }));

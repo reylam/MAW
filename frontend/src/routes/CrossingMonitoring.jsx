@@ -1,10 +1,10 @@
 import { useState } from 'react';
 import { ArrowLeft, AlertTriangle, Train, Shield, Activity, Wifi, Clock, MapPin } from 'lucide-react';
 import { useNavigate, useParams } from 'react-router-dom';
-import { useSimulationStore } from '../store/simulationStore';
 import { useCrossingsLive } from '../hooks/useCrossingsLive';
 import { useEvents } from '../hooks/useEvents';
-import { eventStatus } from '../lib/adapters';
+import { useMawFeed } from '../store/mawFeedStore';
+import { eventStatus, NODE_SENSORS } from '../lib/adapters';
 import { ApiErrorState, EmptyState, LoadingState } from '../components/ui/States';
 import Telemetry from '../components/telemetry/Telemetry';
 import { Card, CardHeader } from '../components/ui/Card';
@@ -31,11 +31,11 @@ function SafetyPanel({ icon: Icon, title, detected, textPositive, textNegative }
 export default function CrossingMonitoring() {
   const { id } = useParams();
   const navigate = useNavigate();
-  const { crossingStatuses } = useSimulationStore();
 
   const [activeTab, setActiveTab] = useState('overview');
   const { data: baseCrossing, loading, error, reload } = useCrossingsLive(id);
-  const { data: events, loading: eventsLoading } = useEvents({ crossing_id: id, limit: 20 });
+  const changeKey = useMawFeed((s) => s.changeKey);
+  const { data: events, loading: eventsLoading } = useEvents({ crossing_id: id, limit: 20 }, changeKey);
 
   if (loading && !baseCrossing) {
     return <div className="p-4 sm:p-6 lg:p-8"><LoadingState label="Loading crossing…" /></div>;
@@ -52,7 +52,7 @@ export default function CrossingMonitoring() {
     );
   }
 
-  const crossing = { ...baseCrossing, status: crossingStatuses[id] || baseCrossing.status };
+  const crossing = baseCrossing;
   const statusMeta = getStatusMeta(crossing.status);
 
   const tabs = [
@@ -62,12 +62,12 @@ export default function CrossingMonitoring() {
     { id: 'history', label: 'Event History' },
   ];
 
-  const sensorReadings = [
-    { label: 'Vibration', value: crossing.sensors.vibration?.toFixed(2) ?? '-', unit: 'g (acceleration)' },
-    { label: 'Magnetic field', value: crossing.sensors.magnetic?.toFixed(2) ?? '-', unit: 'µT (microtesla)' },
-    { label: 'Sound level', value: crossing.sensors.acoustic?.toFixed(2) ?? '-', unit: 'dB (decibel)' },
-    { label: 'Signal strength', value: crossing.rssi ?? '-', unit: 'dBm (RSSI)' },
-  ];
+  // Latest normalized values (0-1) from the sensor node, via the live MAW feed.
+  const sensorReadings = NODE_SENSORS.map((s) => ({
+    label: s.label,
+    value: crossing.sensors[s.field] != null ? crossing.sensors[s.field].toFixed(2) : '-',
+    unit: `${s.hw} · normalized 0-1`,
+  }));
 
   return (
     <div className="h-full flex flex-col">
@@ -145,7 +145,14 @@ export default function CrossingMonitoring() {
               <GateControl crossingId={crossing.id} crossingName={crossing.name} />
 
               <Card>
-                <CardHeader title="Sensor readings" eyebrow="Latest sample" icon={Activity} />
+                <CardHeader
+                  title="Sensor readings"
+                  eyebrow={crossing.nodeId ? `Latest sample · ${crossing.nodeId}` : 'No sensor node data'}
+                  icon={Activity}
+                  action={crossing.fusionScore != null && (
+                    <span className="font-mono text-sm font-semibold text-maw-text-main">Fusion {crossing.fusionScore.toFixed(2)}</span>
+                  )}
+                />
                 <div className="grid grid-cols-2 lg:grid-cols-4 gap-px bg-maw-border-subtle">
                   {sensorReadings.map((s) => (
                     <div key={s.label} className="p-4 bg-maw-card">

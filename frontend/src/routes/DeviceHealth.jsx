@@ -12,8 +12,12 @@ function batteryTone(b) {
 }
 
 // Map a hardware status to the shared status vocabulary.
-const STATUS_MAP = { online: 'safe', degraded: 'warning', offline: 'offline' };
-const STATUS_LABEL = { online: 'Online', degraded: 'Degraded', offline: 'Offline' };
+// Registered devices use connected/disconnected (updated over MQTT); MQTT components use online/degraded/offline.
+const STATUS_MAP = { connected: 'safe', online: 'safe', degraded: 'warning', disconnected: 'offline', offline: 'offline' };
+const STATUS_LABEL = { connected: 'Connected', online: 'Online', degraded: 'Degraded', disconnected: 'Disconnected', offline: 'Offline' };
+
+// `devices` documents use device_type (sensor_node / sensor); MQTT components use component_type.
+const DEVICE_TYPE_ICON = { sensor_node: 'processor', sensor: 'sensor' };
 
 function DeviceIcon({ type }) {
   const Icon = type === 'processor' ? Cpu : type === 'transceiver' ? Radio : type === 'sensor' ? Activity : Signal;
@@ -37,14 +41,14 @@ function HardwareCard({ device }) {
       <div className="flex items-start justify-between gap-3 mb-4">
         <div className="flex items-center gap-3 min-w-0">
           <div className="flex items-center justify-center h-9 w-9 rounded-maw-sm bg-maw-hover text-maw-primary shrink-0">
-            <DeviceIcon type={device.component_type} />
+            <DeviceIcon type={device.component_type || DEVICE_TYPE_ICON[device.device_type] || null} />
           </div>
           <div className="min-w-0">
-            <h3 className="font-display font-semibold text-maw-text-main truncate">{device.name}</h3>
-            <div className="text-xs text-maw-text-subtle truncate">{device.model}</div>
+            <h3 className="font-display font-semibold text-maw-text-main truncate">{device.name || device.device_code || device.id}</h3>
+            <div className="text-xs text-maw-text-subtle truncate">{device.model || [device.id, device.device_type].filter(Boolean).join(' · ')}</div>
           </div>
         </div>
-        <StatusBadge status={uiStatus} label={STATUS_LABEL[device.status] || 'Unknown'} />
+        <StatusBadge status={uiStatus} label={STATUS_LABEL[device.status] || device.status || 'Unknown'} />
       </div>
 
       <div className="space-y-2.5 pt-4 border-t border-maw-border-subtle text-sm">
@@ -117,7 +121,7 @@ export default function DeviceHealth() {
   const groupList = Object.values(groups);
 
   const total = health?.total_devices ?? devices.length;
-  const online = health?.online ?? devices.filter((d) => d.status === 'online').length;
+  const online = health?.online ?? devices.filter((d) => d.status === 'online' || d.status === 'connected').length;
   const criticalFailures = health?.critical_failures ?? devices.filter((d) => d.status === 'offline').length;
 
   return (
@@ -125,11 +129,11 @@ export default function DeviceHealth() {
       <PageHeader
         eyebrow="Hardware"
         title="Device health"
-        description="Live hardware status reported over MQTT, grouped by crossing. Auto-refreshes."
+        description="Registered devices from MongoDB, grouped by crossing. Status (connected / disconnected) is updated over MQTT. Auto-refreshes."
       />
 
       {loading ? (
-        <Card><LoadingState label="Loading hardware…" /></Card>
+        <Card><LoadingState label="Loading devices…" /></Card>
       ) : error ? (
         <Card>
           <ErrorState
@@ -146,8 +150,8 @@ export default function DeviceHealth() {
         <Card>
           <EmptyState
             icon={HardDrive}
-            title="Waiting for hardware"
-            description="No components have reported yet. Field devices appear here automatically once they publish over MQTT."
+            title="No devices registered"
+            description="No documents in the devices collection. Check that the backend is connected to MongoDB (GET /api/health shows db: mongodb)."
           />
         </Card>
       ) : (

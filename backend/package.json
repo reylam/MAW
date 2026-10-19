@@ -6,7 +6,22 @@
   "scripts": {
     "dev": "node --watch src/server.js",
     "start": "node src/server.js",
-    "test": "node --test"
+    "test": "node --test",
+    "sim": "node scripts/mqtt-sim.js",
+    "s3": "node scripts/mqtt-sim.js s3",
+    "s4": "node scripts/mqtt-sim.js s4",
+    "s5": "node scripts/mqtt-sim.js s5",
+    "train": "node scripts/mqtt-sim.js train",
+    "connected_MPU6500": "node scripts/mqtt-device.js connected MPU6500",
+    "connected_HX711": "node scripts/mqtt-device.js connected HX711",
+    "connected_HMC5883L": "node scripts/mqtt-device.js connected HMC5883L",
+    "connected_MAX9814": "node scripts/mqtt-device.js connected MAX9814",
+    "connected_ESP32": "node scripts/mqtt-device.js connected ESP32",
+    "disconnected_MPU6500": "node scripts/mqtt-device.js disconnected MPU6500",
+    "disconnected_HX711": "node scripts/mqtt-device.js disconnected HX711",
+    "disconnected_HMC5883L": "node scripts/mqtt-device.js disconnected HMC5883L",
+    "disconnected_MAX9814": "node scripts/mqtt-device.js disconnected MAX9814",
+    "disconnected_ESP32": "node scripts/mqtt-device.js disconnected ESP32"
   },
   "dependencies": {
     "cors": "^2.8.5",

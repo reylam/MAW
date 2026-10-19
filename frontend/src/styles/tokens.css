@@ -172,8 +172,47 @@ body {
   animation: maw-alert 1.4s ease-in-out infinite;
 }
 
+/* Crossing watch (dashboard): alternating crossing lamps, train, flashing frame. */
+@keyframes maw-lamp {
+  0%, 49% { opacity: 1; }
+  50%, 100% { opacity: 0.15; }
+}
+.maw-lamp-a { animation: maw-lamp 1s steps(1) infinite; }
+.maw-lamp-b { animation: maw-lamp 1s steps(1) infinite; animation-delay: 0.5s; }
+
+@keyframes maw-train-pass {
+  from { transform: translateX(-560px); }
+  to { transform: translateX(760px); }
+}
+@keyframes maw-train-leave {
+  from { transform: translateX(120px); }
+  to { transform: translateX(760px); }
+}
+@keyframes maw-train-wait {
+  0%, 100% { transform: translateX(-470px); }
+  50% { transform: translateX(-440px); }
+}
+.maw-train-pass { animation: maw-train-pass 6s linear infinite; }
+.maw-train-leave { animation: maw-train-leave 4s ease-in forwards; }
+.maw-train-wait { animation: maw-train-wait 3s ease-in-out infinite; }
+
+@keyframes maw-frame-flash {
+  0%, 100% { box-shadow: 0 0 0 2px var(--maw-critical), 0 0 24px 0 rgba(198, 40, 40, 0.45); }
+  50% { box-shadow: 0 0 0 2px transparent, 0 0 0 0 transparent; }
+}
+.maw-frame-flash { animation: maw-frame-flash 1s ease-in-out infinite; }
+
+.maw-barrier-arm { transition: transform 1.6s cubic-bezier(0.45, 0, 0.2, 1); }
+
 @media (prefers-reduced-motion: reduce) {
-  .animate-maw-alert {
+  .animate-maw-alert,
+  .maw-lamp-a,
+  .maw-lamp-b,
+  .maw-train-pass,
+  .maw-train-leave,
+  .maw-train-wait,
+  .maw-frame-flash {
     animation: none;
   }
+  .maw-barrier-arm { transition: none; }
 }

@@ -159,6 +159,81 @@ test('acknowledge only in TUTUP, cleared after AMAN', () => {
   assert.strictEqual(state().acknowledged, null);
 });
 
+test('TUTUP not confirmed within CLOSE_DEADLINE_S escalates once; confirmation closes the barrier', () => {
+  const overdue = [];
+  let t = 1_760_000_000_000;
+  const engine = createEngine({ config: DEFAULT_CONFIG, nodeMap: NODE_MAP, now: () => t, hooks: { onAckOverdue: (o) => overdue.push(o) } });
+  const send = (score) => engine.ingest({ node_id: 'SN_001', timestamp: t / 1000, normalisasi: { v_norm: score, l_norm: score, m_norm: score, s_norm: score }, fusion_score: score, status: score >= 0.6 ? 'DANGER' : 'SAFE' });
+  const state = () => engine.getState('JPL-112');
+
+  send(0.9);
+  assert.strictEqual(state().barrier_status, 'open');
+  assert.strictEqual(new Date(state().close_deadline_at).getTime() - t, 20_000);
+  for (let i = 0; i < 19; i++) { t += 1000; send(0.9); engine.tick(); }
+  assert.strictEqual(state().ack_overdue, false);
+  t += 1000; send(0.9); engine.tick();
+  t += 1000; send(0.9); engine.tick();
+  return new Promise((r) => setTimeout(r, 0)).then(() => {
+    assert.strictEqual(overdue.length, 1);
+    assert.strictEqual(state().ack_overdue, true);
+    engine.acknowledge('JPL-112', { name: 'Budi', email: 'budi@maw.id' });
+    assert.strictEqual(state().barrier_status, 'closed');
+    assert.strictEqual(state().close_deadline_at, null);
+    assert.strictEqual(state().acknowledged.took_s, 21);
+  });
+});
+
+test('a disconnected device forces CEK_MANUAL until it reconnects', async () => {
+  const changes = [];
+  let t = 1_760_000_000_000;
+  const engine = createEngine({ config: DEFAULT_CONFIG, nodeMap: NODE_MAP, now: () => t, hooks: { onDeviceChange: (c) => changes.push(`${c.device.name}:${c.from}>${c.to}`) } });
+  const send = (score) => engine.ingest({ node_id: 'SN_001', timestamp: t / 1000, normalisasi: { v_norm: score, l_norm: score, m_norm: score, s_norm: score }, fusion_score: score, status: 'SAFE' });
+  const state = () => engine.getState('JPL-112');
+  const devices = (mpu) => [
+    { id: 'esp', name: 'ESP32', crossing_id: 'JPL-112', status: 'connected' },
+    { id: 'mpu', name: 'MPU6500', crossing_id: 'JPL-112', status: mpu },
+  ];
+
+  send(0.1);
+  engine.setDeviceStatuses(devices('connected'));
+  assert.strictEqual(state().state, 'AMAN');
+  assert.deepStrictEqual(state().device_faults, []);
+
+  engine.setDeviceStatuses(devices('disconnected'));
+  assert.strictEqual(state().state, 'CEK_MANUAL');
+  assert.strictEqual(state().cause, 'Perangkat terputus: MPU6500');
+  assert.deepStrictEqual(state().device_faults, ['MPU6500']);
+
+  // Fresh sensor data does not hide a disconnected device.
+  t += 1000; send(0.1);
+  assert.strictEqual(state().state, 'CEK_MANUAL');
+
+  engine.setDeviceStatuses(devices('connected'));
+  assert.strictEqual(state().state, 'AMAN');
+  await new Promise((r) => setTimeout(r, 0));
+  assert.deepStrictEqual(changes, ['ESP32:null>connected', 'MPU6500:null>connected', 'MPU6500:connected>disconnected', 'MPU6500:disconnected>connected']);
+});
+
+test('after a closure, a device fault recovers to MENUNGGU_AMAN, not AMAN', () => {
+  const { engine, send, advance, state } = setup();
+  send(0.9);
+  engine.setDeviceStatuses([{ id: 'mpu', name: 'MPU6500', crossing_id: 'JPL-112', status: 'disconnected' }]);
+  assert.strictEqual(state().state, 'CEK_MANUAL');
+  send(0.1);
+  engine.setDeviceStatuses([{ id: 'mpu', name: 'MPU6500', crossing_id: 'JPL-112', status: 'connected' }]);
+  assert.strictEqual(state().state, 'MENUNGGU_AMAN');
+  advance(1);
+});
+
+test('acknowledge is also allowed in MENUNGGU_AMAN', () => {
+  const { engine, send, advance, state } = setup();
+  send(0.9);
+  advance(1); send(0.1);
+  assert.strictEqual(state().state, 'MENUNGGU_AMAN');
+  assert.ok(engine.acknowledge('JPL-112', { name: 'Budi', email: 'budi@maw.id' }).data);
+  assert.strictEqual(state().barrier_status, 'closed');
+});
+
 test('crossing takes the worst state of its nodes (R7)', () => {
   const map = { ...NODE_MAP, SN_002: { crossing_id: 'JPL-112', crossing_name: 'JPL 112 · Ds. Sukamaju' } };
   const { engine, send, state } = setup(map);
@@ -166,6 +241,46 @@ test('crossing takes the worst state of its nodes (R7)', () => {
   assert.strictEqual(state().state, 'CEK_MANUAL'); // SN_002 never reported
   engine.ingest({ node_id: 'SN_002', timestamp: 1, normalisasi: { v_norm: 0.9, l_norm: 0.9, m_norm: 0.9, s_norm: 0.9 }, fusion_score: 0.9, status: 'DANGER' });
   assert.strictEqual(state().state, 'TUTUP');
+});
+
+// Real payloads captured from the SN_001 firmware (S4 safe, S5 warning, S3 danger).
+const FIRMWARE = {
+  S4: { node_id: 'SN_001', timestamp: 1792419342, data_mentah: { getaran_mpu6500: 665, beban_hx711: 384, magnet_hmc5883l: 195, suara_max9814: 218 }, normalisasi: { v_norm: 0.05, l_norm: 0.02, m_norm: 0.04, s_norm: 0.1 }, fusion_score: 0.05, status: 'SAFE' },
+  S5: { node_id: 'SN_001', timestamp: 1792419342, data_mentah: { getaran_mpu6500: 5410, beban_hx711: 2505, magnet_hmc5883l: 346, suara_max9814: 659 }, normalisasi: { v_norm: 0.7, l_norm: 0.25, m_norm: 0.45, s_norm: 0.55 }, fusion_score: 0.49, status: 'WARNING' },
+  S3: { node_id: 'SN_001', timestamp: 1792419342, data_mentah: { getaran_mpu6500: 7308, beban_hx711: 8867, magnet_hmc5883l: 517, suara_max9814: 1022 }, normalisasi: { v_norm: 0.96, l_norm: 0.94, m_norm: 0.91, s_norm: 0.92 }, fusion_score: 0.94, status: 'DANGER' },
+};
+
+test('firmware payloads S4/S5/S3 give AMAN, SIAGA, TUTUP with consistent scores', () => {
+  const { engine, advance, state } = setup();
+  for (const [name, expected] of [['S4', 'AMAN'], ['S5', 'SIAGA'], ['S3', 'TUTUP']]) {
+    const res = engine.ingest(FIRMWARE[name]);
+    assert.strictEqual(res.accepted, true, name);
+    assert.strictEqual(state().state, expected, name);
+    assert.strictEqual(state().score_mismatch, false, name);
+    assert.deepStrictEqual(res.warnings, [], name);
+    advance(1);
+  }
+});
+
+test('WARNING from the node never shows AMAN, even with a low score (R5b)', () => {
+  const { send, state } = setup();
+  send(0.1, { status: 'WARNING' });
+  assert.strictEqual(state().state, 'SIAGA');
+});
+
+test('WARNING during MENUNGGU_AMAN keeps the barrier closed and resets the timer', () => {
+  const { send, advance, state } = setup();
+  send(0.8, { status: 'DANGER' });
+  advance(1); send(0.1);
+  advance(5); send(0.1);
+  assert.strictEqual(state().state, 'MENUNGGU_AMAN');
+  advance(1); send(0.1, { status: 'WARNING' });
+  assert.strictEqual(state().state, 'TUTUP');
+});
+
+test('unknown status value is accepted but flagged', () => {
+  const v = validatePayload({ ...FIRMWARE.S4, status: 'OK' });
+  assert.ok(v.warnings.some((w) => w.code === 'unknown_status'));
 });
 
 test('computeScore uses agreed weights', () => {

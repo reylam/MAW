@@ -46,8 +46,11 @@ export const crossingService = {
   },
 
   // Mirror the MAW decision state into the crossing record used by the web dashboard.
-  async syncStatus(id, { status, train_detected }) {
-    const fields = { status, train_detected, last_updated_at: new Date().toISOString() };
+  async syncStatus(id, { status, train_detected, barrier_status }) {
+    const fields = { last_updated_at: new Date().toISOString() };
+    if (status !== undefined) fields.status = status;
+    if (train_detected !== undefined) fields.train_detected = train_detected;
+    if (barrier_status !== undefined) fields.barrier_status = barrier_status;
     const db = getDb();
     if (db) {
       await db.collection('crossings').updateOne({ id }, { $set: fields });
@@ -58,61 +61,100 @@ export const crossingService = {
   },
 };
 
-// Raw node messages (DESIGN.md 8.1) kept for calibration and technicians.
+// Raw node messages (DESIGN.md 8.1) kept for calibration, technicians and the
+// web telemetry charts. Demo mode keeps a bounded in-memory buffer.
+const memoryReadings = [];
+const MEMORY_READINGS_MAX = 5000;
+
 export const readingService = {
-  async record(reading) {
+  async record(r) {
+    const row = {
+      node_id: r.node_id,
+      crossing_id: r.crossing_id,
+      source: r.source,
+      timestamp: r.timestamp,
+      received_at: new Date(r.received_at).toISOString(),
+      data_mentah: r.data_mentah,
+      normalisasi: r.normalisasi,
+      fusion_score: r.score_node,
+      score_calc: r.score_calc,
+      score_effective: r.score_effective,
+      score_mismatch: r.score_mismatch,
+      status: r.status,
+    };
     const db = getDb();
-    if (!db) return;
-    await db.collection('node_readings').insertOne({ ...reading, received_at: new Date(reading.received_at).toISOString() });
+    if (db) {
+      await db.collection('node_readings').insertOne({ ...row });
+      return;
+    }
+    memoryReadings.push(row);
+    if (memoryReadings.length > MEMORY_READINGS_MAX) memoryReadings.splice(0, memoryReadings.length - MEMORY_READINGS_MAX);
+  },
+
+  // Oldest first, for charting.
+  async list({ crossing_id, since, limit = 2000 }) {
+    const db = getDb();
+    if (db) {
+      const filter = { crossing_id };
+      if (since) filter.received_at = { $gte: since };
+      const rows = await db.collection('node_readings').find(filter).sort({ received_at: -1 }).limit(Number(limit)).toArray();
+      return { data: cleanAll(rows).reverse() };
+    }
+    const rows = memoryReadings.filter((r) => r.crossing_id === crossing_id && (!since || r.received_at >= since));
+    return { data: rows.slice(-Number(limit)) };
   },
 };
 
-// Device Health is backed by the `hardware` collection: the physical
-// components (MCU, transceiver, sensors) installed at each crossing. The health
-// summary and component list are both derived from live data.
+// Device Health lists every registered device (collection `devices`, always
+// shown, MQTT only flips its status) plus any components reported over MQTT
+// into the `hardware` collection. Each row carries `kind` so the UI can tell them apart.
+const ONLINE = ['connected', 'online'];
+const DEGRADED = ['degraded'];
+
 function summarizeHardware(items) {
-  const online = items.filter((d) => d.status === 'online').length;
-  const offline = items.filter((d) => d.status === 'offline').length;
-  const degraded = items.filter((d) => d.status === 'degraded').length;
+  const online = items.filter((d) => ONLINE.includes(d.status)).length;
+  const degraded = items.filter((d) => DEGRADED.includes(d.status)).length;
+  const offline = items.length - online - degraded;
   const withRssi = items.filter((d) => typeof d.rssi === 'number');
-  const avgBattery = items.length
-    ? items.reduce((a, d) => a + (d.battery_level || 0), 0) / items.length
-    : 0;
-  const avgRssi = withRssi.length
-    ? withRssi.reduce((a, d) => a + d.rssi, 0) / withRssi.length
-    : 0;
+  const withBattery = items.filter((d) => typeof d.battery_level === 'number');
+  const avg = (list, key) => (list.length ? Math.round((list.reduce((a, d) => a + d[key], 0) / list.length) * 10) / 10 : null);
   return {
     total_devices: items.length,
     online,
     offline,
     degraded,
     critical_failures: offline,
-    average_battery: Math.round(avgBattery * 10) / 10,
-    average_rssi: Math.round(avgRssi * 10) / 10,
+    average_battery: avg(withBattery, 'battery_level'),
+    average_rssi: avg(withRssi, 'rssi'),
   };
+}
+
+async function allDevices(crossing_id) {
+  const filter = crossing_id ? { crossing_id } : {};
+  const db = getDb();
+  const [devices, hardware] = db
+    ? await Promise.all([
+        db.collection('devices').find(filter).sort({ crossing_id: 1, id: 1 }).toArray(),
+        db.collection('hardware').find(filter).sort({ crossing_id: 1 }).toArray(),
+      ])
+    : [data.devices, data.hardware].map((rows) => rows.filter((r) => !crossing_id || r.crossing_id === crossing_id));
+  const crossings = db ? await db.collection('crossings').find({}, { projection: { id: 1, name: 1 } }).toArray() : data.crossings;
+  const names = Object.fromEntries(crossings.map((c) => [c.id, c.name]));
+  const named = (row) => ({ ...row, crossing_name: row.crossing_name || names[row.crossing_id] || row.crossing_id });
+  return [
+    ...cleanAll(devices).map((d) => named({ ...d, kind: 'device' })),
+    ...cleanAll(hardware).map((h) => named({ ...h, kind: 'component' })),
+  ];
 }
 
 export const deviceService = {
   async getAll(params = {}) {
-    const { crossing_id } = params;
-    const db = getDb();
-
-    if (db) {
-      const filter = {};
-      if (crossing_id) filter.crossing_id = crossing_id;
-      const rows = await db.collection('hardware').find(filter).sort({ crossing_id: 1 }).toArray();
-      return { data: cleanAll(rows), meta: { total: rows.length } };
-    }
-
-    let rows = [...data.hardware];
-    if (crossing_id) rows = rows.filter((h) => h.crossing_id === crossing_id);
+    const rows = await allDevices(params.crossing_id);
     return { data: rows, meta: { total: rows.length } };
   },
 
   async health() {
-    const db = getDb();
-    const items = db ? await db.collection('hardware').find().toArray() : data.hardware;
-    return { data: summarizeHardware(items) };
+    return { data: summarizeHardware(await allDevices()) };
   },
 };
 
@@ -155,6 +197,59 @@ export const alertService = {
     const row = data.alerts.find((a) => a.id === id);
     if (row) { row.status = 'acknowledged'; row.acknowledged_at = now; }
     return { data: row, success: true };
+  },
+
+  // Raise an alert unless one of the same type is still open for the crossing.
+  async raise({ crossing_id, alert_type, severity, title, message, device_id = null }) {
+    const db = getDb();
+    const open = { crossing_id, alert_type, status: { $in: ['active', 'acknowledged'] } };
+    if (device_id) open.device_id = device_id; // one open alert per device
+    if (db) {
+      if (await db.collection('alerts').findOne(open)) return { data: null };
+    } else if (data.alerts.some((a) => a.crossing_id === crossing_id && a.alert_type === alert_type && a.status !== 'resolved' && (!device_id || a.device_id === device_id))) {
+      return { data: null };
+    }
+    // Same id / code scheme as existing alerts: alert-001 / ALT-001, next free number.
+    const codes = db
+      ? (await db.collection('alerts').find({}, { projection: { alert_code: 1 } }).toArray()).map((a) => a.alert_code)
+      : data.alerts.map((a) => a.alert_code);
+    const next = codes.reduce((max, c) => Math.max(max, Number(/^ALT-(\d+)$/.exec(c || '')?.[1] || 0)), 0) + 1;
+    const num = String(next).padStart(3, '0');
+    const n = Date.now();
+    const row = {
+      id: `alert-${num}`,
+      alert_code: `ALT-${num}`,
+      crossing_id,
+      device_id,
+      severity,
+      alert_type,
+      title,
+      message,
+      status: 'active',
+      triggered_at: new Date(n).toISOString(),
+    };
+    if (db) await db.collection('alerts').insertOne({ ...row });
+    else data.alerts.unshift(row);
+    return { data: row };
+  },
+
+  // Bulk status change for every open alert of the given types on a crossing.
+  async closeOpen(crossing_id, alert_types, status, device_id = null) {
+    const now = new Date().toISOString();
+    const stamp = status === 'resolved' ? { resolved_at: now } : { acknowledged_at: now };
+    const from = status === 'resolved' ? ['active', 'acknowledged'] : ['active'];
+    const db = getDb();
+    if (db) {
+      const filter = { crossing_id, alert_type: { $in: alert_types }, status: { $in: from } };
+      if (device_id) filter.device_id = device_id;
+      await db.collection('alerts').updateMany(filter, { $set: { status, ...stamp } });
+      return;
+    }
+    for (const a of data.alerts) {
+      if (a.crossing_id === crossing_id && alert_types.includes(a.alert_type) && from.includes(a.status) && (!device_id || a.device_id === device_id)) {
+        Object.assign(a, { status }, stamp);
+      }
+    }
   },
 
   async resolve(id) {

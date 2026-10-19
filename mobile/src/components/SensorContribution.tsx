@@ -1,7 +1,9 @@
 import { StyleSheet, Text, View } from 'react-native';
+import { ListChecks } from 'lucide-react-native';
 import { decimal } from '@/lib/format';
-import { radius, space, type Theme } from '@/theme/tokens';
+import { font, space, type Theme } from '@/theme/tokens';
 import type { Contribution } from '@/types/maw';
+import { Card, CardHeader } from './ui/Card';
 
 const ROWS: { field: Contribution['field']; label: string }[] = [
   { field: 'v_norm', label: 'Getaran' },
@@ -10,52 +12,53 @@ const ROWS: { field: Contribution['field']; label: string }[] = [
   { field: 's_norm', label: 'Suara' },
 ];
 
-// "KENAPA?": weight × normalized value per sensor (5.3).
+// "KENAPA?": weight × normalized value per sensor (DESIGN.md 5.3).
 export default function SensorContribution({
   theme,
   contributions,
   weights,
-  bodySize,
 }: {
   theme: Theme;
   contributions: Contribution[] | null;
   weights: Record<Contribution['field'], number> | undefined;
-  bodySize: number;
 }) {
-  const maxWeight = Math.max(...Object.values(weights ?? { v: 0.35 }));
+  const maxWeight = Math.max(...Object.values(weights ?? { v_norm: 0.35 }));
   return (
-    <View style={[styles.card, { backgroundColor: theme.surface, borderColor: theme.border }]}>
-      <Text style={[styles.eyebrow, { color: theme.textMuted }]}>KENAPA?</Text>
-      {ROWS.map(({ field, label }) => {
+    <Card theme={theme}>
+      <CardHeader theme={theme} eyebrow="Kenapa?" title="Kontribusi sensor" icon={ListChecks} />
+      {ROWS.map(({ field, label }, i) => {
         const c = contributions?.find((x) => x.field === field);
         const weight = c?.weight ?? weights?.[field] ?? 0;
         const missing = !c || c.value == null;
         return (
-          <View key={field} style={styles.row} accessibilityLabel={missing ? `${label} tidak terbaca` : `${label} ${decimal(c.value)} kali ${decimal(weight)} sama dengan ${decimal(c.result)}`}>
-            <Text style={[styles.label, { color: missing ? theme.textMuted : theme.text, fontSize: bodySize }]}>{label}</Text>
-            {missing ? (
-              <Text style={[styles.formula, { color: theme.textMuted, fontSize: bodySize }]}>tidak terbaca</Text>
-            ) : (
-              <Text style={[styles.formula, { color: theme.text, fontSize: bodySize }]}>
-                {decimal(c.value)} × {decimal(weight)} = {decimal(c.result)}
+          <View
+            key={field}
+            style={[styles.row, i > 0 && { borderTopWidth: 1, borderTopColor: theme.borderSubtle }]}
+            accessibilityLabel={missing ? `${label} tidak terbaca` : `${label} ${decimal(c.value)} kali ${decimal(weight)} sama dengan ${decimal(c.result)}`}
+          >
+            <View style={styles.labelCol}>
+              <Text style={[styles.label, { color: missing ? theme.textSubtle : theme.text }]}>{label}</Text>
+              <Text style={[styles.formula, { color: theme.textSubtle }]}>
+                {missing ? 'tidak terbaca' : `${decimal(c.value)} × ${decimal(weight)}`}
               </Text>
-            )}
-            <View style={[styles.track, { backgroundColor: theme.border }]}>
-              {!missing && <View style={[styles.fill, { width: `${((c.result ?? 0) / maxWeight) * 100}%`, backgroundColor: theme.text }]} />}
             </View>
+            <View style={[styles.track, { backgroundColor: theme.hover }]}>
+              {!missing && <View style={[styles.fill, { width: `${((c.result ?? 0) / maxWeight) * 100}%`, backgroundColor: theme.primary }]} />}
+            </View>
+            <Text style={[styles.result, { color: missing ? theme.textSubtle : theme.text }]}>{missing ? '-' : decimal(c.result)}</Text>
           </View>
         );
       })}
-    </View>
+    </Card>
   );
 }
 
 const styles = StyleSheet.create({
-  card: { borderRadius: radius.card, borderWidth: 1, padding: space.lg, gap: space.md },
-  eyebrow: { fontSize: 13, fontWeight: '700', letterSpacing: 1 },
-  row: { flexDirection: 'row', alignItems: 'center', gap: space.md },
-  label: { width: 64, fontWeight: '500' },
-  formula: { flex: 1, fontVariant: ['tabular-nums'], fontWeight: '500' },
-  track: { width: 72, height: 8, borderRadius: 4, overflow: 'hidden' },
-  fill: { height: '100%', borderRadius: 4 },
+  row: { flexDirection: 'row', alignItems: 'center', gap: space.md, paddingHorizontal: space.lg, paddingVertical: space.md },
+  labelCol: { width: 104 },
+  label: { fontFamily: font.sansMedium, fontSize: 14 },
+  formula: { fontFamily: font.mono, fontSize: 11, fontVariant: ['tabular-nums'], marginTop: 1 },
+  track: { flex: 1, height: 6, borderRadius: 3, overflow: 'hidden' },
+  fill: { height: '100%', borderRadius: 3 },
+  result: { width: 40, textAlign: 'right', fontFamily: font.monoBold, fontSize: 14, fontVariant: ['tabular-nums'] },
 });

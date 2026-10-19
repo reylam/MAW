@@ -5,6 +5,7 @@ import { Card } from '../components/ui/Card';
 import { getStatusMeta } from '../components/ui/StatusBadge';
 import { ApiErrorState, EmptyState, LoadingState } from '../components/ui/States';
 import { eventStatus } from '../lib/adapters';
+import { useMawFeed } from '../store/mawFeedStore';
 import { Clock } from 'lucide-react';
 
 function normalize(ev) {
@@ -34,7 +35,8 @@ export default function EventHistory() {
       .finally(() => setLoading(false));
   }, []);
 
-  useEffect(() => { load(); }, [load]);
+  const changeKey = useMawFeed((s) => s.changeKey);
+  useEffect(() => { load(); }, [load, changeKey]);
 
   return (
     <div className="p-4 sm:p-6 lg:p-8 space-y-5 max-w-[1000px] mx-auto">

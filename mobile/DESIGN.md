@@ -12,9 +12,9 @@
 | Nama | MAW Petugas |
 | Pengguna utama | Petugas Perlintasan Sebidang / Petugas Jaga Lintasan (PT KAI / Dishub) |
 | Perangkat | HP atau tablet di pos jaga (mobile-first, portrait). Tetap bisa dibuka di desktop. |
-| Sumber data | Sensor Node (ESP32) → LoRa → Gateway Node → MQTT `broker.emqx.io:1883`, topik `maw/node/data` → Backend Express.js → WebSocket → Frontend React |
+| Sumber data | Sensor Node (ESP32) → LoRa → Gateway Node → MQTT `broker.emqx.io` (TCP 1883 / WSS 8084), topik `mqx/node/data` → Backend Express.js → WebSocket → Frontend React |
 | Rumus | `Fusion Score = (Getaran × 0,35) + (Beban × 0,30) + (Magnet × 0,20) + (Suara × 0,15)` |
-| Ambang deteksi | `fusion_score ≥ 0,60` → `status: "DANGER"` |
+| Ambang deteksi | `fusion_score ≥ 0,60` → `status: "DANGER"`; `0,40 ≤ fusion_score < 0,60` → `"WARNING"`; di bawahnya `"SAFE"` |
 | Bukan cakupan | Grafik analitik, kalibrasi bobot, kesehatan perangkat detail, manajemen node. Semua itu tetap di dasbor operator (RailSafe Monitor). |
 
 **Pertanyaan yang harus terjawab dalam < 1 detik melihat layar:**
@@ -46,7 +46,7 @@ Nilai di bawah adalah titik mulai. **Wajib dikalibrasi di lapangan** dan disimpa
 | Ambang siaga / lepas | `T_SIAGA` | 0,40 | Batas bawah. Dipakai untuk status SIAGA dan sebagai syarat skor sudah turun. |
 | Waktu tahan aman | `HOLD_BUKA` | 20 detik | Skor harus terus < `T_SIAGA` selama ini sebelum boleh dibuka. |
 | Batas umur data | `STALE_MAX` | 15 detik | Jika tidak ada paket dari node selama ini → CEK MANUAL. |
-| Interval kirim node | `HEARTBEAT` | 5 detik | Sensor Node wajib publish ke `maw/node/data` berkala walau tidak ada kereta. |
+| Interval kirim node | `HEARTBEAT` | 5 detik | Sensor Node wajib publish ke `mqx/node/data` berkala walau tidak ada kereta. |
 | Toleransi selisih skor | `SCORE_TOL` | 0,02 | Batas selisih `fusion_score` dari node vs hitung ulang backend. |
 
 > **Kenapa ada dua ambang (histeresis)?** Saat kereta lewat, skor bisa naik-turun di sekitar 0,60. Dengan satu ambang saja, instruksi akan berkedip TUTUP–BUKA–TUTUP. Dua ambang + waktu tahan membuat instruksi stabil dan palang tidak dibuka terlalu cepat saat gerbong terakhir masih melintas.
@@ -59,7 +59,7 @@ Nilai di bawah adalah titik mulai. **Wajib dikalibrasi di lapangan** dan disimpa
 | **SIAGA** | `T_SIAGA` ≤ skor < `T_TUTUP`, tidak sedang TUTUP | **BERSIAP MENUTUP PALANG** | Kuning/amber |
 | **TUTUP** | Skor ≥ `T_TUTUP` **atau** `status == "DANGER"` dari node | **TUTUP PALANG SEKARANG** | Merah |
 | **MENUNGGU AMAN** | Sedang TUTUP, skor sudah < `T_SIAGA` dan node tidak lagi `DANGER`, hitung mundur `HOLD_BUKA` berjalan | **TETAP TUTUP, tunggu 14 dtk** | Merah (dengan hitung mundur) |
-| **CEK MANUAL** | Data > `STALE_MAX`, koneksi broker/WebSocket putus, atau sensor utama gagal | **CEK MANUAL, jangan andalkan layar** | Abu gelap + garis peringatan |
+| **CEK MANUAL** | Data > `STALE_MAX`, koneksi broker/WebSocket putus, sensor utama gagal, atau **ada perangkat terdaftar yang `disconnected`** (R8) | **CEK MANUAL, jangan andalkan layar** | Abu gelap + garis peringatan |
 
 "Skor" di tabel ini adalah **skor efektif** (lihat 8.3): nilai yang lebih tinggi antara `fusion_score` kiriman node dan hasil hitung ulang backend.
 
@@ -90,6 +90,8 @@ Nilai di bawah adalah titik mulai. **Wajib dikalibrasi di lapangan** dan disimpa
 - **R3.** AMAN hanya boleh tampil jika umur data ≤ `STALE_MAX`. Umur data dihitung dari **waktu backend menerima pesan**, bukan dari field `timestamp` node (lihat 8.4).
 - **R4.** Logika status dihitung di **backend** dan dikirim ke semua klien, supaya semua layar (pos jaga, operator) menampilkan instruksi yang sama. Frontend hanya menambah satu pengecekan lokal: kalau WebSocket putus atau pesan terakhir > `STALE_MAX`, frontend sendiri memaksa CEK MANUAL.
 - **R5.** `status: "DANGER"` dari node selalu dihormati: backend masuk TUTUP walau skor hasil hitung ulang lebih rendah. Sebaliknya, `status` selain `DANGER` **tidak** bisa membatalkan TUTUP jika skor efektif ≥ `T_TUTUP`.
+- **R5b.** `status: "WARNING"` dari node tidak pernah menghasilkan AMAN: status minimal SIAGA walau skor efektif < `T_SIAGA`, dan selama TUTUP/MENUNGGU AMAN diperlakukan seperti skor ≥ `T_SIAGA` (palang tetap tutup, timer di-reset). Prinsip 6: saat ragu, pilih yang lebih aman.
+- **R8.** Perangkat terdaftar (koleksi `devices`: ESP32, MPU6500, HX711 + Load Cell, HMC5883L, MAX9814) yang berstatus `disconnected` memaksa perlintasan ke CEK MANUAL walau data sensor masih segar, karena nilai Fusion Score tidak lagi bisa dipercaya. Penyebab yang tampil: "Perangkat terputus: MPU6500". Status perangkat diubah lewat MQTT (`maw/hardware/<crossing_id>/<perangkat>`, payload `{"status":"connected"|"disconnected"}`); backend juga membuat alert `device_disconnected` dan di web muncul pop-up. Setelah tersambung lagi, status dihitung ulang dari data segar (setelah penutupan: MENUNGGU AMAN, bukan langsung AMAN).
 - **R6.** Bobot dan ambang yang dipakai ditampilkan kecil di layar, agar petugas dan auditor tahu aturan mana yang sedang berlaku.
 - **R7.** Jika ada beberapa Sensor Node untuk satu perlintasan, status perlintasan = status **terburuk** dari semua node-nya (urutan: CEK MANUAL > TUTUP > MENUNGGU AMAN > SIAGA > AMAN).
 
@@ -217,38 +219,43 @@ Empat baris tetap, dipetakan dari field `normalisasi`:
 
 ### 7.1 Warna
 
+Aplikasi memakai design system yang sama dengan dasbor web (`frontend/src/styles/tokens.css`): permukaan netral, biru brand, chip status berlatar lembut. Satu tambahan khusus mobile adalah warna isi (`fill-*`) untuk kartu instruksi.
+
 | Token | Terang | Gelap | Dipakai untuk |
 |---|---|---|---|
-| `--bg` | `#F6F7F9` | `#0E1116` | Latar halaman |
-| `--surface` | `#FFFFFF` | `#171B22` | Kartu sekunder |
-| `--text` | `#111418` | `#F2F4F7` | Teks utama |
-| `--text-muted` | `#5B6470` | `#9AA3AE` | Label, keterangan |
-| `--safe` | `#0B5E30` | `#2FBF71` | AMAN |
-| `--standby` | `#7A4900` | `#F2A93B` | SIAGA |
-| `--danger` | `#A3121A` | `#FF8A8C` | TUTUP, MENUNGGU AMAN |
-| `--unknown` | `#3A3F47` | `#9AA3AE` | CEK MANUAL |
-| `--on-status` | `#FFFFFF` | `#0E1116` | Teks di atas kartu berwarna |
-| `--zone-safe / standby / danger` | `#0F7B3F` / `#B26A00` / `#C4161C` | `#2FBF71` / `#F2A93B` / `#FF4D4F` | Isi bar dan sparkline (tidak dilapisi teks) |
+| `--bg` | `#F4F6F9` | `#0B1220` | Latar halaman |
+| `--surface` | `#FFFFFF` | `#141C2B` | Kartu |
+| `--border` / `--border-subtle` | `#E2E8F0` / `#EEF2F6` | `#273243` / `#1C2535` | Garis kartu, pemisah baris |
+| `--primary` | `#005AA9` | `#3B82F6` | Tombol utama, bar kontribusi sensor, avatar |
+| `--text` / `--text-muted` / `--text-subtle` | `#0F172A` / `#475569` / `#7A8699` | `#F1F5F9` / `#B6C2D2` / `#8595A8` | Teks |
+| `--safe` / `--warning` / `--critical` / `--offline` | `#0F8A5F` / `#B45309` / `#C62828` / `#64748B` | `#34D399` / `#FBBF24` / `#F87171` / `#94A3B8` | Badge, titik status, isi bar dan sparkline (sama dengan web) |
+| `--fill-safe` | `#0B5E3F` | `#34D399` | Kartu instruksi AMAN |
+| `--fill-warning` | `#843C06` | `#FBBF24` | Kartu instruksi SIAGA |
+| `--fill-critical` | `#9F1E1E` | `#F99B9B` | Kartu instruksi TUTUP, MENUNGGU AMAN |
+| `--fill-offline` | `#475569` | `#94A3B8` | Kartu instruksi CEK MANUAL (+ garis diagonal) |
+| `--on-fill` | `#FFFFFF` | `#0B1220` | Teks di atas kartu instruksi |
 
-- Rasio kontras teks di atas kartu instruksi minimal **7:1** (WCAG AAA), karena dibaca dari jauh dan di bawah matahari.
-- Nilai awal token (`#0F7B3F`, `#B26A00`, `#C4161C` dengan teks putih; `#FF4D4F`, `#5A616B` di mode gelap) hanya mencapai 2,4 sampai 6,3:1, jadi kecerahannya digeser tanpa mengubah rona. Kontras hasil akhir: terang 7,9 / 7,55 / 7,9 / 10,6; gelap 7,94 / 9,47 / 8,34 / 7,41 (aman / siaga / tutup / cek manual).
+- Rasio kontras teks di atas kartu instruksi minimal **7:1** (WCAG AAA), karena dibaca dari jauh dan di bawah matahari. Warna status web (kontras 3,3 sampai 5,6:1 dengan teks putih) tidak cukup untuk kartu penuh, jadi `fill-*` memakai rona yang sama dengan kecerahan digeser. Kontras hasil akhir: terang 7,8 / 8,0 / 7,8 / 7,6; gelap 9,7 / 11,2 / 9,1 / 7,3 (aman / siaga / tutup / cek manual).
 - Mode gelap mengikuti pengaturan sistem; disarankan default gelap untuk shift malam.
 
 ### 7.2 Tipografi
 
-| Peran | Ukuran (HP) | Ukuran (tablet) | Bobot |
-|---|---|---|---|
-| Judul instruksi | 40 px | 64 px | 800 |
-| Subjudul instruksi | 18 px | 22 px | 500 |
-| Angka Fusion Score | 36 px | 48 px | 700, `font-variant-numeric: tabular-nums` |
-| Label / isi | 15 px | 16 px | 500 |
-| Meta (bobot, node) | 12 px | 13 px | 400 |
+Font sama dengan web: **IBM Plex Sans** (isi), **Space Grotesk** (judul), **IBM Plex Mono** (angka teknis, eyebrow huruf kapital kecil).
 
-Font: **Inter** (atau system UI). Angka teknis boleh memakai **JetBrains Mono**.
+| Peran | Font | Ukuran (HP) | Ukuran (tablet) |
+|---|---|---|---|
+| Judul instruksi | Space Grotesk Bold | 34 px | 56 px |
+| Subjudul instruksi | IBM Plex Sans Medium | 16 px | 20 px |
+| Angka Fusion Score | IBM Plex Mono Bold, tabular | 36 px | 48 px |
+| Judul kartu | Space Grotesk SemiBold | 15 px | 15 px |
+| Label / isi | IBM Plex Sans | 14 sampai 15 px | 15 sampai 16 px |
+| Eyebrow, meta (bobot, node, jam) | IBM Plex Mono | 10 sampai 12 px | 10 sampai 13 px |
+
+Ikon memakai set yang sama dengan web (Lucide).
 
 ### 7.3 Spasi & bentuk
 - Skala spasi 4 px: 4, 8, 12, 16, 24, 32.
-- Radius kartu 16 px; tombol 12 px.
+- Radius sama dengan web: kartu 8 px (kartu instruksi 10 px), chip/badge 6 px, tombol 8 px.
 - Target sentuh minimal 48 × 48 px (petugas bisa memakai sarung tangan).
 
 ---
@@ -260,8 +267,9 @@ Font: **Inter** (atau system UI). Angka teknis boleh memakai **JetBrains Mono**.
 | Item | Nilai |
 |---|---|
 | Broker | `broker.emqx.io` |
-| Port | `1883` (MQTT/TCP, untuk backend) |
-| Topik | `maw/node/data` |
+| Port | `8084` (MQTT over WebSocket TLS, `wss://broker.emqx.io:8084/mqtt`, dipakai backend) atau `1883` (MQTT/TCP) |
+| Client ID | `maw-mqtt` (backend menambah akhiran acak, misal `maw-mqtt-a3f9c1`, agar tidak bentrok) |
+| Topik | `mqx/node/data` |
 | Format | JSON, satu pesan per pembacaan node |
 
 ```json
@@ -285,6 +293,20 @@ Font: **Inter** (atau system UI). Angka teknis boleh memakai **JetBrains Mono**.
 }
 ```
 
+#### 8.1.1 Contoh payload asli dari firmware (SN_001)
+
+| Skenario | Payload | Hitung ulang | Hasil di aplikasi |
+|---|---|---|---|
+| S4, aman | `normalisasi` 0,05 / 0,02 / 0,04 / 0,10, `fusion_score` 0,05, `status` `"SAFE"` | 0,0465 | AMAN |
+| S5, waspada | `normalisasi` 0,70 / 0,25 / 0,45 / 0,55, `fusion_score` 0,49, `status` `"WARNING"` | 0,4925 | SIAGA |
+| S3, bahaya | `normalisasi` 0,96 / 0,94 / 0,91 / 0,92, `fusion_score` 0,94, `status` `"DANGER"` | 0,9380 | TUTUP |
+
+```json
+{"node_id": "SN_001", "timestamp": 1792419342, "data_mentah": {"getaran_mpu6500": 7308, "beban_hx711": 8867, "magnet_hmc5883l": 517, "suara_max9814": 1022}, "normalisasi": {"v_norm": 0.96, "l_norm": 0.94, "m_norm": 0.91, "s_norm": 0.92}, "fusion_score": 0.94, "status": "DANGER"}
+```
+
+Catatan: jam node sudah tersinkron (timestamp hanya selisih menit dari jam server). Ketiga contoh memakai `timestamp` yang sama; di lapangan `timestamp` harus naik tiap kiriman, karena pesan dengan `node_id` + `timestamp` + `fusion_score` yang sama dalam 2 detik dibuang sebagai duplikat (8.2 langkah 5).
+
 | Field | Tipe | Dipakai aplikasi untuk |
 |---|---|---|
 | `node_id` | string | Mencari perlintasan pemilik node (tabel 8.5) dan label di header. |
@@ -292,11 +314,11 @@ Font: **Inter** (atau system UI). Angka teknis boleh memakai **JetBrains Mono**.
 | `data_mentah.*` | number | Disimpan ke MongoDB untuk kalibrasi/teknisi. Tidak tampil di layar utama. |
 | `normalisasi.v_norm/l_norm/m_norm/s_norm` | number 0–1 | Baris kontribusi sensor + hitung ulang skor. |
 | `fusion_score` | number 0–1 | Skor dari node, dibandingkan dengan hitung ulang. |
-| `status` | string | `"DANGER"` = node menyatakan kereta terdeteksi (Decision = 1). Nilai lain dianggap Decision = 0. |
+| `status` | string | `"SAFE"` \| `"WARNING"` \| `"DANGER"`. `DANGER` = node menyatakan kereta terdeteksi (Decision = 1, R5). `WARNING` = sinyal mulai terbaca (minimal SIAGA, R5b). `SAFE` = Decision 0. Nilai lain diterima sebagai Decision 0 dan dicatat `unknown_status`. |
 
 ### 8.2 Validasi payload di backend
 
-Setiap pesan di `maw/node/data` diproses berurutan:
+Setiap pesan di `mqx/node/data` diproses berurutan:
 
 1. **Parse JSON.** Gagal → buang, tambah hitungan `invalid_payload`, catat di log.
 2. **Cek field wajib:** `node_id`, `normalisasi` (4 nilai), `fusion_score`, `status`. Hilang → tandai pesan tidak lengkap; jika `v_norm` (sensor utama) hilang → node masuk CEK MANUAL.
@@ -375,22 +397,22 @@ Event `crossing.state`, dikirim tiap ada pesan baru (maks. 2×/detik per perlint
 Untuk demo cepat, frontend React boleh langsung subscribe ke broker. Browser **tidak bisa** memakai port 1883 (TCP); gunakan MQTT over WebSocket:
 
 - `ws://broker.emqx.io:8083/mqtt` atau `wss://broker.emqx.io:8084/mqtt` (pakai `wss` jika aplikasi di-host lewat HTTPS)
-- Topik sama: `maw/node/data`
+- Topik sama: `mqx/node/data`
 
 Logika bagian 3 dan 8.2–8.4 ditulis sebagai satu modul JavaScript murni (`mawState.js`) sehingga bisa dipakai di backend maupun frontend tanpa perubahan. Pada mode ini, konfirmasi petugas dan riwayat hanya tersimpan di perangkat itu.
 
 ### 8.8 Catatan untuk firmware
-- Sensor Node wajib publish ke `maw/node/data` setiap `HEARTBEAT` (5 dtk), **termasuk saat tidak ada kereta** (status bukan `DANGER`). Tanpa ini, aplikasi tidak bisa membedakan "tidak ada kereta" dan "node mati", sehingga aturan R3 akan sering memicu CEK MANUAL.
-- Sepakati nilai `status` saat aman (misal `"SAFE"`) dan tuliskan di dokumentasi firmware.
+- Sensor Node wajib publish ke `mqx/node/data` setiap `HEARTBEAT` (5 dtk), **termasuk saat tidak ada kereta** (status bukan `DANGER`). Tanpa ini, aplikasi tidak bisa membedakan "tidak ada kereta" dan "node mati", sehingga aturan R3 akan sering memicu CEK MANUAL.
+- Nilai `status` yang dipakai firmware: `"SAFE"` (< 0,40), `"WARNING"` (0,40 sampai < 0,60), `"DANGER"` (≥ 0,60).
 - Disarankan (opsional) menambah field `seq` (nomor urut paket) untuk menghitung *packet loss*, dan `threshold` agar backend bisa memastikan ambang firmware sama dengan konfigurasi.
 
 ---
 
 ## 9. Keamanan Data (penting untuk aplikasi keselamatan)
 
-`broker.emqx.io` adalah **broker publik tanpa autentikasi**. Siapa pun yang tahu topik `maw/node/data` bisa ikut publish pesan, termasuk pesan palsu yang membuat layar menampilkan AMAN saat ada kereta.
+`broker.emqx.io` adalah **broker publik tanpa autentikasi**. Siapa pun yang tahu topik `mqx/node/data` bisa ikut publish pesan, termasuk pesan palsu yang membuat layar menampilkan AMAN saat ada kereta.
 
-- **Prototipe/lab:** boleh dipakai, dengan mitigasi minimal: validasi `node_id` terdaftar (8.2 langkah 4) dan ganti topik dengan prefiks unik tim, misal `ureeka-iniabadi/maw/node/data`.
+- **Prototipe/lab:** boleh dipakai, dengan mitigasi minimal: validasi `node_id` terdaftar (8.2 langkah 4) dan ganti topik dengan prefiks unik tim, misal `ureeka-iniabadi/mqx/node/data`.
 - **Uji lapangan / produksi:** wajib broker privat (EMQX/Mosquitto sendiri) dengan username/password per node, TLS di port 8883, dan ACL (node hanya boleh publish ke topiknya sendiri, aplikasi hanya boleh subscribe).
 - Apa pun brokernya, aturan R5 memastikan pesan palsu "aman" tidak bisa membatalkan status TUTUP yang sedang berjalan sebelum `HOLD_BUKA` selesai.
 
@@ -404,6 +426,7 @@ Logika bagian 3 dan 8.2–8.4 ditulis sebagai satu modul JavaScript murni (`mawS
 | Dua kereta beruntun / berlawanan arah | Timer MENUNGGU AMAN di-reset saat skor naik lagi ≥ 0,40. |
 | Kendaraan berat lewat, skor 0,45 sebentar | SIAGA, kembali AMAN saat skor turun. Tidak ada alarm keras. |
 | `status: "DANGER"` tapi skor hitung ulang 0,52 | TUTUP (R5), ikon ⓘ skor tidak konsisten. |
+| `status: "WARNING"` tapi skor 0,30 | SIAGA (R5b), bukan AMAN. |
 | `fusion_score` node 0,83, hitung ulang 0,76 | Bar menampilkan 0,76 + ikon ⓘ; status dihitung dari skor efektif 0,83. |
 | Jam node salah (timestamp 2024) | Tidak berpengaruh ke status; dicatat di log teknisi. |
 | Pesan dari `node_id` tak dikenal di broker publik | Diabaikan, dicatat. |
@@ -433,6 +456,8 @@ Logika bagian 3 dan 8.2–8.4 ditulis sebagai satu modul JavaScript murni (`mawS
 - [ ] Simulasi skor 0,20 → 0,70 → 0,30 menghasilkan urutan AMAN → SIAGA → TUTUP → MENUNGGU AMAN → AMAN tanpa kedipan.
 - [ ] Simulasi skor naik lagi saat MENUNGGU AMAN mengembalikan status ke TUTUP.
 - [ ] Pesan dengan `status: "DANGER"` dan skor rendah tetap menghasilkan TUTUP.
+- [ ] Pesan dengan `status: "WARNING"` dan skor rendah menghasilkan SIAGA, bukan AMAN.
+- [ ] Contoh firmware 8.1.1 (S4, S5, S3) menghasilkan AMAN, SIAGA, TUTUP tanpa ikon ⓘ.
 - [ ] Pesan dari `node_id` tak terdaftar tidak mengubah tampilan.
 - [ ] Alarm TUTUP berulang sampai tombol konfirmasi ditekan; konfirmasi tercatat di log.
 - [ ] Setiap status bisa dibedakan dalam mode grayscale.
@@ -448,6 +473,6 @@ Logika bagian 3 dan 8.2–8.4 ditulis sebagai satu modul JavaScript murni (`mawS
 | Threshold | **Disepakati:** 0,60. Mockup *Minimum Activation Threshold* (75%) perlu disamakan. |
 | Sensor getaran | **Disepakati:** MPU6500 (sesuai payload). Bagian lain proposal masih menulis MPU6050. |
 | Peran palang | Palang dioperasikan petugas berdasarkan instruksi aplikasi (sesuai Batasan). DFD Level 0 yang menyebut output "Sirine & Palang" perlu disesuaikan. |
-| Contoh perhitungan di payload | **Perlu diperbaiki:** dengan nilai normalisasi contoh, hasilnya 0,7575 (≈ 0,76), bukan 0,8275 (≈ 0,83). Periksa juga kode firmware, jangan-jangan bobot di ESP32 berbeda dari yang disepakati. |
-| Nilai `status` saat aman | **Belum ditentukan** (usulan: `"SAFE"`). |
+| Contoh perhitungan di payload | **Terverifikasi di firmware:** payload asli SN_001 (8.1.1) cocok dengan bobot yang disepakati, selisih hitung ulang maks. 0,0035 (< `SCORE_TOL` 0,02). Contoh di 8.1 (0,83 vs 0,76) tetap dipakai sebagai kasus uji skor tidak konsisten. |
+| Nilai `status` | **Disepakati** (dari firmware): `"SAFE"`, `"WARNING"`, `"DANGER"`. |
 | Telemetri (baterai, RSSI, SNR) | **Dihapus dari payload.** Aplikasi tidak menampilkan kesehatan baterai/sinyal. Gangguan jalur LoRa (termasuk jamming) dan baterai habis hanya terdeteksi sebagai node berhenti mengirim → CEK MANUAL. Fitur *LoRa Jamming Detection* berbasis RSSI/SNR di proposal tidak dicakup aplikasi ini. |

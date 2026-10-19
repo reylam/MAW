@@ -1,17 +1,21 @@
 import { useState } from 'react';
 import { ActivityIndicator, Image, KeyboardAvoidingView, Platform, Pressable, StyleSheet, Text, TextInput, View } from 'react-native';
+import { ArrowRight, CircleAlert, Mail } from 'lucide-react-native';
 import { useAuthStore } from '@/store/useAuthStore';
-import { radius, space, useTheme } from '@/theme/tokens';
+import { font, radius, space, useTheme } from '@/theme/tokens';
 
-// Petugas sign in with their registered email, so confirmations are attributed (5.5).
+// Mirrors the web "Operator sign in" page. Petugas sign in so confirmations are attributed (DESIGN.md 5.5).
 export default function LoginScreen() {
   const theme = useTheme();
   const login = useAuthStore((s) => s.login);
   const [email, setEmail] = useState('');
+  const [focused, setFocused] = useState(false);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const disabled = busy || !email.trim();
 
   const submit = async () => {
+    if (disabled) return;
     setBusy(true);
     setError(null);
     try {
@@ -25,31 +29,58 @@ export default function LoginScreen() {
 
   return (
     <KeyboardAvoidingView behavior={Platform.OS === 'ios' ? 'padding' : undefined} style={[styles.root, { backgroundColor: theme.bg }]}>
-      <View style={[styles.card, { backgroundColor: theme.surface, borderColor: theme.border }]}>
-        <View style={styles.logoWrap}>
+      <View style={styles.column}>
+        <View style={styles.brand}>
           <Image source={require('../../assets/logo.png')} style={styles.logo} resizeMode="contain" accessibilityLabel="MAW" />
+          <Text style={[styles.tagline, { color: theme.textSubtle }]}>Monitoring • Alert • Warning</Text>
         </View>
-        <Text style={[styles.title, { color: theme.text }]}>MAW Petugas</Text>
-        <Text style={[styles.sub, { color: theme.textMuted }]}>Masuk dengan email petugas yang terdaftar.</Text>
-        <TextInput
-          value={email}
-          onChangeText={setEmail}
-          placeholder="nama@maw.id"
-          placeholderTextColor={theme.textMuted}
-          autoCapitalize="none"
-          autoCorrect={false}
-          keyboardType="email-address"
-          returnKeyType="go"
-          onSubmitEditing={submit}
-          style={[styles.input, { color: theme.text, borderColor: theme.border, backgroundColor: theme.bg }]}
-        />
-        {error && <Text style={[styles.error, { color: theme.zoneDanger }]}>{error}</Text>}
+
+        {error && (
+          <View accessibilityRole="alert" style={[styles.alert, { backgroundColor: theme.criticalSoft, borderColor: theme.criticalBorder }]}>
+            <CircleAlert size={16} color={theme.critical} />
+            <Text style={[styles.alertText, { color: theme.critical }]}>{error}</Text>
+          </View>
+        )}
+
+        <Text style={[styles.title, { color: theme.text }]}>Masuk petugas</Text>
+        <Text style={[styles.sub, { color: theme.textMuted }]}>Gunakan email petugas yang terdaftar untuk membuka layar pos jaga.</Text>
+
+        <Text style={[styles.label, { color: theme.textMuted }]}>Email petugas</Text>
+        <View style={[styles.inputWrap, { backgroundColor: theme.surface, borderColor: focused ? theme.primary : theme.border }]}>
+          <Mail size={16} color={theme.textSubtle} />
+          <TextInput
+            value={email}
+            onChangeText={setEmail}
+            onFocus={() => setFocused(true)}
+            onBlur={() => setFocused(false)}
+            placeholder="petugas@maw.id"
+            placeholderTextColor={theme.textSubtle}
+            autoCapitalize="none"
+            autoCorrect={false}
+            autoComplete="email"
+            keyboardType="email-address"
+            returnKeyType="go"
+            onSubmitEditing={submit}
+            style={[styles.input, { color: theme.text }]}
+          />
+        </View>
+
         <Pressable
           onPress={submit}
-          disabled={busy || !email.trim()}
-          style={({ pressed }) => [styles.button, { backgroundColor: theme.text, opacity: pressed || busy || !email.trim() ? 0.6 : 1 }]}
+          disabled={disabled}
+          style={({ pressed }) => [styles.button, { backgroundColor: theme.primary, opacity: disabled ? 0.6 : pressed ? 0.9 : 1 }]}
         >
-          {busy ? <ActivityIndicator color={theme.bg} /> : <Text style={[styles.buttonText, { color: theme.bg }]}>Masuk</Text>}
+          {busy ? (
+            <>
+              <ActivityIndicator color="#FFFFFF" size="small" />
+              <Text style={styles.buttonText}>Memeriksa…</Text>
+            </>
+          ) : (
+            <>
+              <Text style={styles.buttonText}>Lanjut</Text>
+              <ArrowRight size={16} color="#FFFFFF" />
+            </>
+          )}
         </Pressable>
       </View>
     </KeyboardAvoidingView>
@@ -57,15 +88,18 @@ export default function LoginScreen() {
 }
 
 const styles = StyleSheet.create({
-  root: { flex: 1, justifyContent: 'center', padding: space.lg },
-  card: { width: '100%', maxWidth: 420, alignSelf: 'center', borderRadius: radius.card, borderWidth: 1, padding: space.xl, gap: space.md },
-  // The logo artwork is on white, so it sits on a white plate in both themes.
-  logoWrap: { backgroundColor: '#FFFFFF', borderRadius: radius.button, paddingVertical: space.md, alignItems: 'center' },
-  logo: { width: 180, height: 70 },
-  title: { fontSize: 22, fontWeight: '800', textAlign: 'center' },
-  sub: { fontSize: 15, textAlign: 'center' },
-  input: { minHeight: 52, borderRadius: radius.button, borderWidth: 1, paddingHorizontal: space.lg, fontSize: 16 },
-  error: { fontSize: 14 },
-  button: { minHeight: 52, borderRadius: radius.button, alignItems: 'center', justifyContent: 'center' },
-  buttonText: { fontSize: 16, fontWeight: '700' },
+  root: { flex: 1, justifyContent: 'center', padding: space.xxl },
+  column: { width: '100%', maxWidth: 384, alignSelf: 'center' },
+  brand: { alignItems: 'center', marginBottom: 32, gap: space.md },
+  logo: { width: 120, height: 40 },
+  tagline: { fontFamily: font.mono, fontSize: 10, letterSpacing: 1.8, textTransform: 'uppercase' },
+  alert: { flexDirection: 'row', gap: 10, alignItems: 'flex-start', borderWidth: 1, borderRadius: radius.md, padding: space.md, marginBottom: space.xl },
+  alertText: { flex: 1, fontFamily: font.sans, fontSize: 14 },
+  title: { fontFamily: font.display, fontSize: 20, marginBottom: 4 },
+  sub: { fontFamily: font.sans, fontSize: 14, marginBottom: space.xxl },
+  label: { fontFamily: font.sansSemi, fontSize: 12, letterSpacing: 0.8, textTransform: 'uppercase', marginBottom: 6 },
+  inputWrap: { flexDirection: 'row', alignItems: 'center', gap: space.sm, borderWidth: 1, borderRadius: radius.md, paddingHorizontal: space.md, minHeight: 48 },
+  input: { flex: 1, fontFamily: font.sans, fontSize: 15, paddingVertical: 10 },
+  button: { marginTop: space.xl, minHeight: 48, borderRadius: radius.md, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: space.sm },
+  buttonText: { color: '#FFFFFF', fontFamily: font.sansSemi, fontSize: 15 },
 });

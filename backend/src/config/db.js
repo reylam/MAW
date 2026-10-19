@@ -45,6 +45,7 @@ export async function connectDB() {
 
     await ensureIndexes();
     await seedIfEmpty();
+    await ensureRegisteredSensors();
     return db;
   } catch (error) {
     console.error('MongoDB connection failed, falling back to demo data:', error.message);
@@ -78,6 +79,19 @@ async function ensureIndexes() {
   await db.collection('network_links').createIndex({ id: 1 }, { unique: true });
   await db.collection('node_readings').createIndex({ node_id: 1, received_at: -1 });
   await db.collection('events').createIndex({ crossing_id: 1, event_type: 1, occurred_at: -1 });
+}
+
+// The node's sensors (MPU6500, HX711, HMC5883L, MAX9814) must always exist in
+// `devices` so Device Health lists them. Insert only the missing ones: existing
+// documents (and the status MQTT set on them) are never overwritten.
+async function ensureRegisteredSensors() {
+  const sensors = data.devices.filter((d) => d.device_type === 'sensor');
+  let added = 0;
+  for (const doc of sensors) {
+    const res = await db.collection('devices').updateOne({ id: doc.id }, { $setOnInsert: { ...doc } }, { upsert: true });
+    if (res.upsertedCount) added++;
+  }
+  if (added) console.log(`Registered ${added} sensor device(s) in "devices"`);
 }
 
 // Seed collections from demo data when a collection is empty, so a fresh

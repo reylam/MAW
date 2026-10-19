@@ -28,7 +28,21 @@ export function createEngine({ config, nodeMap, now = () => Date.now(), hooks = 
   const pending = new Map();
   const recent = new Map(); // dedup key -> received_at
   let linkFault = null; // e.g. MQTT broker down: every node is CEK_MANUAL immediately
-  const counters = { received: 0, accepted: 0, invalid_payload: 0, unknown_node: 0, duplicate: 0, sensor_out_of_range: 0, incomplete_payload: 0, score_mismatch: 0, clock_skew: 0 };
+  // Registered devices per crossing (collection `devices`). Any disconnected one forces CEK_MANUAL.
+  const deviceStates = new Map(); // crossing_id -> [{ id, name, status }]
+  const isDown = (status) => ['disconnected', 'offline'].includes(String(status).toLowerCase());
+  const downDevices = (crossingId) => (deviceStates.get(crossingId) || []).filter((d) => isDown(d.status));
+  function faultFor(nodeId) {
+    if (linkFault) return linkFault;
+    const down = downDevices(nodeMap[nodeId].crossing_id);
+    return down.length ? `Perangkat terputus: ${down.map((d) => d.name).join(', ')}` : null;
+  }
+  function tickAll() {
+    const t = now();
+    for (const ns of nodes.values()) evaluateNode(ns, t, config, faultFor(ns.node_id));
+    for (const c of crossings.values()) updateCrossing(c, { force: true });
+  }
+  const counters = { received: 0, accepted: 0, invalid_payload: 0, unknown_node: 0, duplicate: 0, sensor_out_of_range: 0, incomplete_payload: 0, unknown_status: 0, score_mismatch: 0, clock_skew: 0 };
 
   for (const [nodeId, info] of Object.entries(nodeMap)) {
     nodes.set(nodeId, createNodeState(nodeId));
@@ -40,6 +54,8 @@ export function createEngine({ config, nodeMap, now = () => Date.now(), hooks = 
       last_known_state: null,
       ack: null,
       entered_at: now(),
+      closure_started_at: null, // first TUTUP of the current closure episode
+      overdue_notified: false,
     };
     c.node_ids.push(nodeId);
     crossings.set(info.crossing_id, c);
@@ -82,13 +98,23 @@ export function createEngine({ config, nodeMap, now = () => Date.now(), hooks = 
       hold_buka_s: config.HOLD_BUKA_S,
       stale_max_s: config.STALE_MAX_S,
       contributions: last?.contributions ?? null,
-      node: { node_id: ns.node_id, status: last?.status ?? null, posisi: info.posisi ?? null },
+      node: { node_id: ns.node_id, device_id: info.device_id ?? null, status: last?.status ?? null, posisi: info.posisi ?? null },
       nodes: c.node_ids.map((id) => ({ node_id: id, state: nodes.get(id).state })),
       warnings: missingSecondary.map((f) => `Sensor ${SENSOR_LABEL[f]} tidak terbaca`),
+      devices: deviceStates.get(c.id) || [],
+      device_faults: downDevices(c.id).map((d) => d.name),
       hold_remaining_s: holdRemaining(ns, t, config),
       received_at: last ? new Date(last.received_at).toISOString() : null,
       server_ts: new Date(t).toISOString(),
       acknowledged: c.ack,
+      entered_at: new Date(c.entered_at).toISOString(),
+      // Barrier: closed once the petugas confirms, open again when the crossing is safe.
+      barrier_status: c.ack ? 'closed' : 'open',
+      close_deadline_s: config.CLOSE_DEADLINE_S,
+      close_deadline_at: c.closure_started_at != null && !c.ack
+        ? new Date(c.closure_started_at + config.CLOSE_DEADLINE_S * 1000).toISOString()
+        : null,
+      ack_overdue: c.overdue_notified && !c.ack,
     };
   }
 
@@ -116,7 +142,13 @@ export function createEngine({ config, nodeMap, now = () => Date.now(), hooks = 
       const ns = decidingNode(c);
       const leftClosure = (prev === 'MENUNGGU_AMAN' || prev === 'TUTUP') && (next === 'AMAN' || next === 'SIAGA');
       const durationS = leftClosure && ns.closure_ms != null ? Math.round(ns.closure_ms / 1000) : null;
-      if (next === 'AMAN' || next === 'SIAGA') c.ack = null;
+      const wasClosed = Boolean(c.ack);
+      if (next === 'TUTUP' && c.closure_started_at == null) c.closure_started_at = t;
+      if (next === 'AMAN' || next === 'SIAGA') {
+        c.ack = null;
+        c.closure_started_at = null;
+        c.overdue_notified = false;
+      }
       c.entered_at = t;
       call('onTransition', {
         crossing_id: c.id,
@@ -130,11 +162,30 @@ export function createEngine({ config, nodeMap, now = () => Date.now(), hooks = 
         severity: EVENT_SEVERITY[next],
         dashboard_status: DASHBOARD_STATUS[next],
         train_detected: next === 'TUTUP' || next === 'MENUNGGU_AMAN',
+        barrier_opened: wasClosed && !c.ack,
+        device_id: nodeMap[ns.node_id]?.device_id ?? null,
       });
       emit(c, true);
       return;
     }
+    checkDeadline(c, t);
     emit(c, force);
+  }
+
+  // Escalate once when TUTUP is not confirmed within CLOSE_DEADLINE_S.
+  function checkDeadline(c, t) {
+    if (c.state !== 'TUTUP' || c.ack || c.overdue_notified || c.closure_started_at == null) return;
+    if (t - c.closure_started_at < config.CLOSE_DEADLINE_S * 1000) return;
+    c.overdue_notified = true;
+    const ns = decidingNode(c);
+    call('onAckOverdue', {
+      crossing_id: c.id,
+      crossing_name: c.name,
+      node_id: ns.node_id,
+      device_id: nodeMap[ns.node_id]?.device_id ?? null,
+      deadline_s: config.CLOSE_DEADLINE_S,
+      score: ns.last?.score_effective ?? null,
+    });
   }
 
   function crossingOf(nodeId) {
@@ -178,37 +229,66 @@ export function createEngine({ config, nodeMap, now = () => Date.now(), hooks = 
 
       const c = crossingOf(msg.node_id);
       if (ns.last.score_mismatch && !wasMismatch) {
-        call('onScoreMismatch', { crossing_id: c.id, node_id: msg.node_id, score_node: ns.last.score_node, score_calc: ns.last.score_calc });
+        call('onScoreMismatch', {
+          crossing_id: c.id,
+          crossing_name: c.name,
+          node_id: msg.node_id,
+          device_id: nodeMap[msg.node_id]?.device_id ?? null,
+          score_node: ns.last.score_node,
+          score_calc: ns.last.score_calc,
+        });
+      } else if (!ns.last.score_mismatch && wasMismatch) {
+        call('onScoreMatch', { crossing_id: c.id, node_id: msg.node_id });
       }
       call('onReading', { ...ns.last, crossing_id: c.id, source, warnings: res.warnings });
 
-      evaluateNode(ns, t, config, linkFault);
+      evaluateNode(ns, t, config, faultFor(ns.node_id));
       updateCrossing(c);
       return { accepted: true, node_state: ns.state, crossing_state: c.state, warnings: res.warnings };
     },
 
     // Timer: STALE_MAX and HOLD_BUKA are time based, not message based.
-    tick() {
-      const t = now();
-      for (const ns of nodes.values()) evaluateNode(ns, t, config, linkFault);
-      for (const c of crossings.values()) updateCrossing(c, { force: true });
+    tick: tickAll,
+
+    // Latest status of the registered devices (from MongoDB / MQTT). Calls
+    // hooks.onDeviceChange for every device whose status changed (first load included).
+    setDeviceStatuses(list) {
+      const next = new Map();
+      for (const d of list) {
+        if (!crossings.has(d.crossing_id)) continue;
+        if (!next.has(d.crossing_id)) next.set(d.crossing_id, []);
+        next.get(d.crossing_id).push({ id: d.id, name: d.name, status: isDown(d.status) ? 'disconnected' : 'connected' });
+      }
+      for (const [crossingId, devices] of next) {
+        const before = new Map((deviceStates.get(crossingId) || []).map((d) => [d.id, d.status]));
+        for (const d of devices) {
+          if (before.get(d.id) === d.status) continue;
+          call('onDeviceChange', { crossing_id: crossingId, crossing_name: crossings.get(crossingId).name, device: d, from: before.get(d.id) ?? null, to: d.status });
+        }
+      }
+      for (const [crossingId, devices] of next) deviceStates.set(crossingId, devices);
+      tickAll();
     },
 
     // null clears the fault; a string forces CEK_MANUAL with that cause.
     setLinkFault(cause) {
       if (linkFault === cause) return;
       linkFault = cause;
-      this.tick();
+      tickAll();
     },
 
     acknowledge(crossingId, operator) {
       const c = crossings.get(crossingId);
       if (!c) return { notFound: true };
-      if (c.state !== 'TUTUP') return { conflict: `Konfirmasi hanya bisa saat status TUTUP (sekarang ${c.state})` };
+      if (c.state !== 'TUTUP' && c.state !== 'MENUNGGU_AMAN') {
+        return { conflict: `Konfirmasi hanya bisa saat palang harus tertutup (sekarang ${c.state})` };
+      }
       if (!c.ack) {
         const score = decidingNode(c).last?.score_effective ?? null;
-        c.ack = { by: operator.name || operator.email, email: operator.email, at: new Date(now()).toISOString(), score };
-        call('onAcknowledge', { crossing_id: c.id, crossing_name: c.name, ...c.ack, operator });
+        const t = now();
+        const tookS = c.closure_started_at != null ? Math.round((t - c.closure_started_at) / 1000) : null;
+        c.ack = { by: operator.name || operator.email, email: operator.email, at: new Date(t).toISOString(), score, took_s: tookS };
+        call('onAcknowledge', { crossing_id: c.id, crossing_name: c.name, ...c.ack, overdue: c.overdue_notified, operator });
         emit(c, true);
       }
       return { data: view(c) };

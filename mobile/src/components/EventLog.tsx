@@ -1,59 +1,76 @@
 import { useState } from 'react';
 import { Pressable, StyleSheet, Text, View } from 'react-native';
-import { MaterialCommunityIcons } from '@expo/vector-icons';
+import { ChevronDown, ChevronUp, Clock } from 'lucide-react-native';
 import { clock, duration } from '@/lib/format';
-import { radius, space, type Theme } from '@/theme/tokens';
+import { font, space, toneColors, toneOf, type Theme, type Tone } from '@/theme/tokens';
 import type { MawEvent } from '@/types/maw';
+import { Card, CardHeader } from './ui/Card';
 
-// Collapsible list of today's last 10 events (5.6).
+function eventTone(e: MawEvent): Tone {
+  if (e.event_type === 'maw_ack') return 'safe';
+  if (e.event_type === 'maw_score_mismatch') return 'warning';
+  if (e.event_type === 'maw_ack_overdue') return 'critical';
+  const to = e.metadata?.to;
+  if (e.event_type === 'device_status') return to === 'disconnected' ? 'critical' : 'safe';
+  return to && to !== 'connected' && to !== 'disconnected' ? toneOf(to) : 'offline';
+}
+
+// Collapsible list of today's last 10 events (DESIGN.md 5.6), styled like the web "Recent activity".
 export default function EventLog({
   theme,
   events,
   error,
-  bodySize,
   defaultOpen = false,
 }: {
   theme: Theme;
   events: MawEvent[];
   error: string | null;
-  bodySize: number;
   defaultOpen?: boolean;
 }) {
   const [open, setOpen] = useState(defaultOpen);
+  const Chevron = open ? ChevronUp : ChevronDown;
+
   return (
-    <View style={[styles.card, { backgroundColor: theme.surface, borderColor: theme.border }]}>
-      <Pressable onPress={() => setOpen((v) => !v)} style={styles.head} accessibilityRole="button" accessibilityState={{ expanded: open }}>
-        <Text style={[styles.title, { color: theme.text, fontSize: bodySize }]}>Riwayat hari ini</Text>
-        <MaterialCommunityIcons name={open ? 'chevron-up' : 'chevron-down'} size={22} color={theme.textMuted} />
+    <Card theme={theme}>
+      <Pressable onPress={() => setOpen((v) => !v)} accessibilityRole="button" accessibilityState={{ expanded: open }}>
+        <CardHeader
+          theme={theme}
+          eyebrow="Hari ini"
+          title="Riwayat kejadian"
+          icon={Clock}
+          divider={open}
+          action={<Chevron size={18} color={theme.textSubtle} />}
+        />
       </Pressable>
       {open && (
-        <View style={styles.list}>
-          {error && <Text style={[styles.empty, { color: theme.textMuted }]}>Riwayat tidak dapat dimuat: {error}</Text>}
-          {!error && events.length === 0 && <Text style={[styles.empty, { color: theme.textMuted }]}>Belum ada kejadian hari ini.</Text>}
-          {events.map((e) => {
-            const extra = e.metadata?.duration_s != null ? `(durasi ${duration(e.metadata.duration_s)})` : e.event_type === 'maw_state' ? '' : e.description;
+        <View>
+          {error && <Text style={[styles.empty, { color: theme.textSubtle }]}>Riwayat tidak dapat dimuat: {error}</Text>}
+          {!error && events.length === 0 && <Text style={[styles.empty, { color: theme.textSubtle }]}>Belum ada kejadian hari ini.</Text>}
+          {events.map((e, i) => {
+            const desc = e.metadata?.duration_s != null ? `Durasi tutup ${duration(e.metadata.duration_s)}` : e.description;
             return (
-              <View key={e.id} style={styles.row}>
-                <Text style={[styles.time, { color: theme.textMuted, fontSize: bodySize - 1 }]}>{clock(e.occurred_at)}</Text>
-                <Text style={[styles.text, { color: theme.text, fontSize: bodySize - 1 }]}>
-                  {e.title}{extra ? `  ${extra}` : ''}
-                </Text>
+              <View key={e.id} style={[styles.row, i > 0 && { borderTopWidth: 1, borderTopColor: theme.borderSubtle }]}>
+                <View style={[styles.dot, { backgroundColor: toneColors(theme, eventTone(e)).fg }]} />
+                <View style={styles.text}>
+                  <Text style={[styles.title, { color: theme.text }]} numberOfLines={1}>{e.title}</Text>
+                  {!!desc && <Text style={[styles.desc, { color: theme.textSubtle }]} numberOfLines={1}>{desc}</Text>}
+                </View>
+                <Text style={[styles.time, { color: theme.textSubtle }]}>{clock(e.occurred_at)}</Text>
               </View>
             );
           })}
         </View>
       )}
-    </View>
+    </Card>
   );
 }
 
 const styles = StyleSheet.create({
-  card: { borderRadius: radius.card, borderWidth: 1, paddingHorizontal: space.lg },
-  head: { minHeight: 48, flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' },
-  title: { fontWeight: '600' },
-  list: { paddingBottom: space.md, gap: space.sm },
-  row: { flexDirection: 'row', gap: space.md },
-  time: { width: 44, fontVariant: ['tabular-nums'] },
-  text: { flex: 1 },
-  empty: { fontSize: 14 },
+  row: { flexDirection: 'row', alignItems: 'flex-start', gap: space.md, paddingHorizontal: space.lg, paddingVertical: 10 },
+  dot: { width: 8, height: 8, borderRadius: 4, marginTop: 6 },
+  text: { flex: 1, minWidth: 0 },
+  title: { fontFamily: font.sansMedium, fontSize: 14 },
+  desc: { fontFamily: font.sans, fontSize: 12, marginTop: 1 },
+  time: { fontFamily: font.mono, fontSize: 11, marginTop: 2, fontVariant: ['tabular-nums'] },
+  empty: { fontFamily: font.sans, fontSize: 13, padding: space.lg },
 });
