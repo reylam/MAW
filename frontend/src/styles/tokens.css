@@ -1,0 +1,179 @@
+@import url('https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:ital,wght@0,400;0,500;0,600;0,700;1,400&family=IBM+Plex+Sans:wght@300;400;500;600;700&family=Space+Grotesk:wght@500;600;700&display=swap');
+
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+/*
+  MAW — Smart Rail Guard design tokens
+  Operational, technical, restrained. Neutral surfaces carry the layout;
+  brand blue and accent orange are used intentionally, not decoratively.
+*/
+
+:root {
+  /* Surfaces & structure */
+  --maw-bg: #F4F6F9;
+  --maw-surface: #FFFFFF;
+  --maw-card: #FFFFFF;
+  --maw-hover: #F1F5F9;
+  --maw-border: #E2E8F0;
+  --maw-border-strong: #CBD5E1;
+  --maw-border-subtle: #EEF2F6;
+
+  /* Brand */
+  --maw-primary: #005AA9;
+  --maw-primary-hover: #004C8F;
+  --maw-primary-soft: #E8F0F8;
+  --maw-accent: #F58220;
+  --maw-accent-hover: #DC6F12;
+  --maw-accent-soft: #FDEEE0;
+  --maw-accent-border: #F6CDA3;
+
+  /* Status — foreground / soft background / border, used as a set */
+  --maw-safe: #0F8A5F;
+  --maw-safe-soft: #E6F4EE;
+  --maw-safe-border: #B7E0CE;
+
+  --maw-warning: #B45309;
+  --maw-warning-soft: #FBF0E0;
+  --maw-warning-border: #F0D49E;
+
+  --maw-critical: #C62828;
+  --maw-critical-soft: #FBE9E9;
+  --maw-critical-border: #F2BFBF;
+
+  --maw-offline: #64748B;
+  --maw-offline-soft: #EEF1F5;
+  --maw-offline-border: #D5DCE4;
+
+  /* Text */
+  --maw-text-main: #0F172A;
+  --maw-text-muted: #475569;
+  --maw-text-subtle: #7A8699;
+
+  /* Elevation — restrained, single soft layer */
+  --maw-shadow-sm: 0 1px 2px rgba(15, 23, 42, 0.04);
+  --maw-shadow: 0 1px 3px rgba(15, 23, 42, 0.06), 0 1px 2px rgba(15, 23, 42, 0.04);
+
+  /* Radius scale */
+  --maw-radius-sm: 6px;
+  --maw-radius: 8px;
+  --maw-radius-lg: 10px;
+}
+
+[data-theme='dark'] {
+  --maw-bg: #0B1220;
+  --maw-surface: #141C2B;
+  --maw-card: #141C2B;
+  --maw-hover: #1E293B;
+  --maw-border: #273243;
+  --maw-border-strong: #3A4759;
+  --maw-border-subtle: #1C2535;
+
+  --maw-primary: #3B82F6;
+  --maw-primary-hover: #2F6FD6;
+  --maw-primary-soft: #16263E;
+  --maw-accent: #F97316;
+  --maw-accent-hover: #EA660A;
+  --maw-accent-soft: #2A1C10;
+  --maw-accent-border: #4A3317;
+
+  --maw-safe: #34D399;
+  --maw-safe-soft: #11271F;
+  --maw-safe-border: #1E4435;
+
+  --maw-warning: #FBBF24;
+  --maw-warning-soft: #2A1F0C;
+  --maw-warning-border: #4A3717;
+
+  --maw-critical: #F87171;
+  --maw-critical-soft: #2A1414;
+  --maw-critical-border: #4A2222;
+
+  --maw-offline: #94A3B8;
+  --maw-offline-soft: #1C2535;
+  --maw-offline-border: #2E3B4E;
+
+  --maw-text-main: #F1F5F9;
+  --maw-text-muted: #B6C2D2;
+  --maw-text-subtle: #8595A8;
+
+  --maw-shadow-sm: 0 1px 2px rgba(0, 0, 0, 0.3);
+  --maw-shadow: 0 1px 3px rgba(0, 0, 0, 0.35), 0 1px 2px rgba(0, 0, 0, 0.25);
+}
+
+body {
+  background-color: var(--maw-bg);
+  color: var(--maw-text-main);
+  font-family: 'IBM Plex Sans', sans-serif;
+  margin: 0;
+  padding: 0;
+  overflow-x: hidden;
+  transition: background-color 0.2s ease, color 0.2s ease;
+}
+
+.font-display {
+  font-family: 'Space Grotesk', sans-serif;
+  letter-spacing: -0.01em;
+}
+
+.font-mono {
+  font-family: 'IBM Plex Mono', monospace;
+  font-variant-numeric: tabular-nums;
+}
+
+/* Eyebrow / section label — the one consistent "technical" accent */
+.eyebrow {
+  font-family: 'IBM Plex Mono', monospace;
+  font-size: 10px;
+  letter-spacing: 0.16em;
+  text-transform: uppercase;
+  color: var(--maw-text-subtle);
+}
+
+/* Custom Scrollbar */
+::-webkit-scrollbar {
+  width: 8px;
+  height: 8px;
+}
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+::-webkit-scrollbar-thumb {
+  background: var(--maw-border-strong);
+  border-radius: 8px;
+}
+::-webkit-scrollbar-thumb:hover {
+  background: var(--maw-text-subtle);
+}
+
+/* Focus ring — consistent, accessible */
+:focus-visible {
+  outline: 2px solid var(--maw-primary);
+  outline-offset: 2px;
+}
+
+/*
+  Status dot: a quiet steady indicator. We reserve motion for the
+  single most urgent state (critical / train detected) only.
+*/
+.status-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 9999px;
+  flex-shrink: 0;
+}
+
+@keyframes maw-alert {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.45; }
+}
+.animate-maw-alert {
+  animation: maw-alert 1.4s ease-in-out infinite;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .animate-maw-alert {
+    animation: none;
+  }
+}
