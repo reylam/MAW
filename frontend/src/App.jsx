@@ -2,6 +2,7 @@ import { useEffect } from 'react';
 import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom';
 import { startMawFeed } from './store/mawFeedStore';
 import DeviceAlerts from './components/watch/DeviceAlerts';
+import ConfigWarning from './components/ui/ConfigWarning';
 import Sidebar from './components/layout/Sidebar';
 import TopBar from './components/layout/TopBar';
 import ProtectedRoute from './components/auth/ProtectedRoute';
@@ -52,6 +53,7 @@ function Landing() {
 function App() {
   return (
     <BrowserRouter>
+      <ConfigWarning />
       <Routes>
         <Route path="/" element={<Landing />} />
         <Route path="/dashboard" element={<Protected><Dashboard /></Protected>} />

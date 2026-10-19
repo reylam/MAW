@@ -9,8 +9,7 @@ import { create } from "zustand";
   - deviceAlerts: devices that just went disconnected (drives the pop-up)
 */
 
-const API_URL = import.meta.env.VITE_API_URL || "http://localhost:5000/api";
-const WS_URL = import.meta.env.VITE_WS_URL || API_URL.replace(/^http/, "ws").replace(/\/api\/?$/, "") + "/ws";
+import { WS_URL } from "../config/env.js";
 
 export const useMawFeed = create((set) => ({
   connected: false,

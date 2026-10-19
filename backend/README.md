@@ -39,8 +39,10 @@ To add a scenario, paste a payload from the firmware into `scripts/scenarios.jso
 
 | Variable | Default | Purpose |
 |---|---|---|
-| `PORT` | `5000` | HTTP port |
-| `FRONTEND_URL` | `http://localhost:5173` | Allowed CORS origin |
+| `PORT` | `5000` | HTTP port. Hosting providers set it themselves. |
+| `NODE_ENV` | `development` | `production` turns simulation off and hides error details |
+| `FRONTEND_URL` | `http://localhost:5173` | Allowed browser origins (CORS): one URL or a comma separated list. `*` matches one subdomain, e.g. `https://*.vercel.app`. |
+| `MAW_ENABLE_SIM` | unset | Production only: allow the Simulation Center. Only a supervisor can start or stop it. |
 | `MONGODB_URI` | empty | Connection string. Empty means demo data. |
 | `MONGODB_DB` | `maw` | Database name |
 | `MQTT_URL` | empty | Broker for node data, e.g. `wss://broker.emqx.io:8084/mqtt`. Empty disables MQTT. |
@@ -136,7 +138,7 @@ Base path `/api`. Responses are `{ "success": true, "data": ... }`.
 - `GET /crossings/:id/events?date=today`: today's decision history
 - `GET /crossings/:id/readings?minutes=60`: stored node readings for charts
 
-**Simulation** (disabled when `NODE_ENV=production`)
+**Simulation** (off when `NODE_ENV=production`; with `MAW_ENABLE_SIM=true` the POST routes need `"operator": { "email" }` of a supervisor)
 - `POST /maw/simulate`: feed one node payload
 - `GET /maw/sim`, `POST /maw/sim/start` (`{ "scenario": "s3" }`), `POST /maw/sim/stop`
 
@@ -198,6 +200,18 @@ tests/                Node test runner
 ```
 
 `src/maw/mawState.js` has no imports and no I/O, so the same logic can run in the browser.
+
+## Deploy
+
+The backend keeps a WebSocket server and an MQTT connection open and runs timers, so it needs a host that runs Node continuously (Railway, Render on a paid plan, Fly.io, a VPS). It **cannot run on Vercel**, which only offers short serverless functions.
+
+- Root directory `backend`. The included [Dockerfile](Dockerfile) is picked up automatically by Railway, Render and Fly.io. Without Docker: install `npm install`, start `npm start`, Node 20 or newer. Health check: `/api/health`.
+- Set `NODE_ENV=production`, `MONGODB_URI`, `MONGODB_DB`, `MQTT_URL`, `MAW_NODE_TOPIC`, `HARDWARE_MQTT_URL` and `FRONTEND_URL` (the Vercel address). Leave `PORT` to the host.
+- Run a single instance (state is in memory) on a plan that never sleeps.
+- Atlas: allow `0.0.0.0/0` under Network Access.
+- Check `https://<host>/api/health`: `db: mongodb`, `mqtt: connected`, `mqtt_hardware: connected`. WebSocket clients use `wss://<host>/ws`.
+
+Full walkthrough, including the frontend: [../README.md](../README.md#deploy).
 
 ## Demo mode
 

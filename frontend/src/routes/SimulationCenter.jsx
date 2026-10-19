@@ -2,10 +2,11 @@ import { useCallback, useEffect, useState } from 'react';
 import { Play, Square, Train, ShieldCheck, AlertTriangle, OctagonAlert, FlaskConical, Terminal } from 'lucide-react';
 import PageHeader from '../components/ui/PageHeader';
 import { Card, CardHeader } from '../components/ui/Card';
-import { ApiErrorState, LoadingState } from '../components/ui/States';
+import { ApiErrorState, EmptyState, LoadingState } from '../components/ui/States';
 import BarrierInstruction from '../components/maw/BarrierInstruction';
 import apiClient from '../services/apiClient';
 import { useMawFeed } from '../store/mawFeedStore';
+import { useAuthStore } from '../store/authStore';
 
 /*
   Runs a scenario on the backend: the payload (backend/scripts/scenarios.json)
@@ -23,22 +24,30 @@ const STATUS_META = {
 export default function SimulationCenter() {
   const [scenarios, setScenarios] = useState(null);
   const [error, setError] = useState(null);
+  const [disabled, setDisabled] = useState(false); // simulation is turned off on this server
+  const [runError, setRunError] = useState(null);
   const [busy, setBusy] = useState(null);
+  const operator = useAuthStore((s) => s.operator);
   const sim = useMawFeed((s) => s.sim);
   const crossingId = useMawFeed((s) => Object.keys(s.states)[0]);
 
   const load = useCallback(() => {
     setError(null);
-    apiClient.request('/maw/sim').then((res) => setScenarios(res.data.scenarios)).catch(setError);
+    apiClient
+      .request('/maw/sim')
+      .then((res) => setScenarios(res.data.scenarios))
+      .catch((err) => (err.message === 'Route not found' ? setDisabled(true) : setError(err)));
   }, []);
   useEffect(() => { load(); }, [load]);
 
   const run = async (path, body) => {
     setBusy(body?.scenario ?? 'stop');
+    setRunError(null);
     try {
-      await apiClient.request(path, { method: 'POST', body: JSON.stringify(body ?? {}) });
+      // The operator identifies the requester: a public server only lets a supervisor run simulations.
+      await apiClient.request(path, { method: 'POST', body: JSON.stringify({ ...(body ?? {}), operator }) });
     } catch (err) {
-      setError(err);
+      setRunError(err.message);
     } finally {
       setBusy(null);
     }
@@ -71,9 +80,21 @@ export default function SimulationCenter() {
         </div>
       )}
 
+      {runError && (
+        <div role="alert" className="rounded-maw border border-maw-critical-border bg-maw-critical-soft px-4 py-3 text-sm text-maw-critical">
+          {runError}
+        </div>
+      )}
+
       <Card>
         <CardHeader title="Scenarios" eyebrow="Sent every 5 s until stopped" icon={Play} />
-        {error ? (
+        {disabled ? (
+          <EmptyState
+            icon={FlaskConical}
+            title="Simulation is disabled on this server"
+            description="It is off in production by default. Set MAW_ENABLE_SIM=true on the backend to allow supervisors to use it."
+          />
+        ) : error ? (
           <ApiErrorState error={error} onRetry={load} />
         ) : !scenarios ? (
           <LoadingState label="Loading scenarios…" />

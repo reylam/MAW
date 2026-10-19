@@ -36,7 +36,7 @@ After changing `.env`, restart with `npx expo start -c`.
 | `EXPO_PUBLIC_WS_URL` | Optional. Defaults to the API host at `/ws`. |
 | `EXPO_PUBLIC_CROSSING_ID` | Optional. Pins this phone to one crossing. Empty uses the first crossing the backend reports. |
 
-`localhost` on a phone means the phone itself, so use the laptop LAN IP. Variables starting with `EXPO_PUBLIC_` are shipped inside the app: no secrets here. The app talks to the backend only; it never connects to MongoDB or MQTT directly.
+With a deployed backend use its public address: `EXPO_PUBLIC_API_URL=https://<backend>/api` (the WebSocket becomes `wss://<backend>/ws`). `localhost` on a phone means the phone itself, so use the laptop LAN IP. Variables starting with `EXPO_PUBLIC_` are shipped inside the app: no secrets here. The app talks to the backend only; it never connects to MongoDB or MQTT directly.
 
 ## Try it
 

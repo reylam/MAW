@@ -27,6 +27,18 @@ Start the backend first (`cd ../backend && npm run dev`). Sign in with an operat
 
 Variables starting with `VITE_` are shipped to the browser. Keep secrets (MongoDB, MQTT credentials) in `backend/.env`.
 
+## Deploy to Vercel
+
+1. Deploy the backend first, on a host that runs Node continuously (see [../README.md](../README.md#deploy)). Vercel cannot host it.
+2. In Vercel, import the repository and set **Root Directory** to `frontend`. The framework is detected as Vite; [vercel.json](vercel.json) sets the build output and rewrites every path to `index.html` so deep links such as `/crossing/crossing-01` work after a refresh.
+3. Add environment variables (Project Settings, Environment Variables):
+   - `VITE_API_URL=https://<backend>/api`
+   - `VITE_WS_URL=wss://<backend>/ws` (optional)
+4. Deploy. After changing a variable, redeploy: Vite bakes `VITE_*` values in at build time.
+5. On the backend, set `FRONTEND_URL=https://<project>.vercel.app,https://*.vercel.app` and restart it, or the browser will block the requests (CORS).
+
+The backend URL must be `https`: a Vercel page cannot call `http://` or `ws://`. If the variable is missing or wrong, the site shows a red "Configuration problem" banner at the bottom of the page.
+
 ## Pages
 
 | Route | Content |

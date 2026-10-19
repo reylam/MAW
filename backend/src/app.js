@@ -9,13 +9,45 @@ import { isMqttConnected, isHardwareMqttConnected } from './config/mqtt.js';
 import { getEngine } from './maw/runtime.js';
 import * as simRunner from './maw/simRunner.js';
 
-const devOnly = (_req, res, next) => (process.env.NODE_ENV === 'production'
-  ? res.status(404).json({ success: false, error: { message: 'Route not found', code: 'ROUTE_NOT_FOUND' } })
-  : next());
+const notFound = (res) => res.status(404).json({ success: false, error: { message: 'Route not found', code: 'ROUTE_NOT_FOUND' } });
+const isProd = () => process.env.NODE_ENV === 'production';
+
+/*
+  Simulation feeds fake sensor data into the barrier decision engine, so on a
+  public server it is off unless MAW_ENABLE_SIM=true, and then only a
+  supervisor may start or stop it (the scenario list stays readable).
+*/
+const simGuard = (requireSupervisor) => async (req, res, next) => {
+  if (!isProd()) return next();
+  if (process.env.MAW_ENABLE_SIM !== 'true') return notFound(res);
+  if (!requireSupervisor) return next();
+  try {
+    const authz = await services.operatorService.validate(req.body?.operator?.email);
+    if (!authz.authorized || authz.operator.role !== 'supervisor') {
+      return res.status(403).json({ success: false, error: { message: 'Simulation requires a supervisor.' } });
+    }
+    next();
+  } catch (error) { res.status(500).json({ success: false, error: { message: error.message } }); }
+};
+
+// FRONTEND_URL: one origin or a comma separated list. A * matches one subdomain
+// label, e.g. https://*.vercel.app for Vercel preview deployments.
+const originPatterns = (process.env.FRONTEND_URL || 'http://localhost:5173')
+  .split(',')
+  .map((o) => o.trim().replace(/\/$/, ''))
+  .filter(Boolean)
+  .map((o) => {
+    const escaped = o.replace(/[.+?^${}()|[\]\\]/g, '\\$&');
+    return new RegExp(`^${escaped.replace(/\*/g, '[^./]+')}$`, 'i');
+  });
 
 const app = express();
+app.set('trust proxy', 1); // behind the hosting provider's reverse proxy
 app.use(helmet());
-app.use(cors({ origin: process.env.FRONTEND_URL || 'http://localhost:5173' }));
+app.use(cors({
+  // Requests without an Origin (the mobile app, curl, health checks) are not browser CORS requests.
+  origin: (origin, callback) => callback(null, !origin || originPatterns.some((re) => re.test(origin))),
+}));
 app.use(express.json({ limit: '1mb' }));
 app.use(morgan('combined'));
 
@@ -247,26 +279,26 @@ app.get('/api/crossings/:id/readings', async (req, res) => {
 });
 
 // Feed one node payload without hardware (development/demo only).
-app.post('/api/maw/simulate', devOnly, (req, res) => {
+app.post('/api/maw/simulate', simGuard(true), (req, res) => {
   const result = getEngine().ingest(req.body || {}, { source: 'simulate' });
   res.status(result.accepted ? 200 : 422).json({ success: result.accepted, data: result });
 });
 
 // Simulation Center: run a scenario (scripts/scenarios.json) every heartbeat until stopped.
-app.get('/api/maw/sim', devOnly, (_req, res) => {
+app.get('/api/maw/sim', simGuard(false), (_req, res) => {
   res.json({ success: true, data: { ...simRunner.status(), scenarios: simRunner.listScenarios() } });
 });
 
-app.post('/api/maw/sim/start', devOnly, (req, res) => {
+app.post('/api/maw/sim/start', simGuard(true), (req, res) => {
   const result = simRunner.start(req.body?.scenario);
   if (result.error) return res.status(404).json({ success: false, error: { message: result.error } });
   res.json({ success: true, data: result.data });
 });
 
-app.post('/api/maw/sim/stop', devOnly, (_req, res) => {
+app.post('/api/maw/sim/stop', simGuard(true), (_req, res) => {
   res.json({ success: true, data: simRunner.stop().data });
 });
 
-app.use((_req, res) => res.status(404).json({ success: false, error: { message: 'Route not found', code: 'ROUTE_NOT_FOUND' } }));
+app.use((_req, res) => notFound(res));
 app.use((error, _req, res, _next) => res.status(500).json({ success: false, error: { message: process.env.NODE_ENV === 'production' ? 'Internal server error' : error.message, code: 'INTERNAL_ERROR' } }));
 export default app;

@@ -97,6 +97,32 @@ Available devices: `ESP32`, `MPU6500`, `HX711`, `HMC5883L`, `MAX9814`.
 | `mqx/node/data` | Fusion Score JSON from the node (see [mobile/DESIGN.md](mobile/DESIGN.md) section 8.1) | Barrier decisions |
 | `maw/hardware/<crossing_id>/<device>` | `{"status": "connected"}` or `{"status": "disconnected"}` | Device health |
 
+## Deploy
+
+The three parts deploy to different places, because they need different things from the host.
+
+| Part | Where | Why |
+|---|---|---|
+| Web dashboard (`frontend/`) | **Vercel** | Static Vite build |
+| Backend (`backend/`) | A host that runs Node **continuously**: Railway, Render (paid plan), Fly.io, or a VPS | It keeps a WebSocket server and an MQTT connection open and runs a state machine on a timer. Vercel only runs short serverless functions with no WebSockets and no long-lived connections, so the backend cannot run there. |
+| Database | MongoDB Atlas | |
+
+Order: deploy the backend first (you need its URL), then the frontend, then tell the backend where the frontend lives.
+
+1. **Backend.** Create a service from this repository with root directory `backend`. [backend/Dockerfile](backend/Dockerfile) is detected automatically by Railway, Render and Fly.io; without Docker use start command `npm start` on Node 20 or newer. Health check: `/api/health`. Set the variables from [backend/.env.example](backend/.env.example), at least `NODE_ENV=production`, `MONGODB_URI`, `MONGODB_DB`, `MQTT_URL`, `MAW_NODE_TOPIC`, `HARDWARE_MQTT_URL`. Do not set `PORT`. Open `https://<backend>/api/health`: it must show `"db":"mongodb"` and `"mqtt":"connected"`.
+2. **Frontend on Vercel.** Import the repository, set **Root Directory** to `frontend` (the framework is detected as Vite), and add the environment variable `VITE_API_URL=https://<backend>/api`. Deploy. Details: [frontend/README.md](frontend/README.md).
+3. **Allow the frontend in the backend.** Set `FRONTEND_URL=https://<project>.vercel.app,https://*.vercel.app` on the backend and restart it (the `*` entry covers Vercel preview deployments).
+4. **Mobile app.** Set `EXPO_PUBLIC_API_URL=https://<backend>/api` in `mobile/.env`.
+
+Things that will bite you:
+
+- **The backend must always be on.** A plan that sleeps when idle (for example Render free) stops the MQTT connection and the timers, and every screen falls to manual check. Use a plan that does not sleep.
+- **Run exactly one backend instance.** The decision state lives in memory. Two instances would each process the same MQTT messages, split the state and raise duplicate alerts.
+- **MongoDB Atlas network access.** Hosting providers use changing IPs, so allow `0.0.0.0/0` under Network Access and protect the database with a strong user password.
+- **https only.** The Vercel site is https, so the browser blocks an `http://` or `ws://` backend. A red banner on the site tells you when this is misconfigured.
+- **Vite bakes `VITE_*` values in at build time.** After changing them on Vercel, redeploy.
+- **The API has no token authentication.** Operators are identified by email only. Treat the deployment as a demo or pilot, keep `MAW_ENABLE_SIM` unset, and do not expose it as a hardened production service without adding real authentication.
+
 ## Tests and checks
 
 ```bash
