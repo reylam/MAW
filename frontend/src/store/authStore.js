@@ -5,8 +5,8 @@ import { create } from 'zustand';
 
   The source of truth for *authorization* is the backend
   (POST /api/auth/validate-operator). This store only holds the resulting
-  session — authenticated flag, operator email, and the display name the
-  operator chose — and mirrors it to localStorage so a refresh keeps the
+  session - authenticated flag, operator email, and the display name the
+  operator chose - and mirrors it to localStorage so a refresh keeps the
   operator signed in.
 
   No credentials or authorized-email lists live here. Protected routes read
@@ -32,7 +32,7 @@ function persist(session) {
     if (session) localStorage.setItem(STORAGE_KEY, JSON.stringify(session));
     else localStorage.removeItem(STORAGE_KEY);
   } catch {
-    /* storage unavailable — session stays in memory only */
+    /* storage unavailable - session stays in memory only */
   }
 }
 

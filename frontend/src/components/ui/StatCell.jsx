@@ -1,5 +1,5 @@
 /*
-  Metric cell. Values use the display face at a controlled size — big enough
+  Metric cell. Values use the display face at a controlled size - big enough
   to scan, not so big it turns an operations screen into a marketing page.
   `tone` tints only the number, not the whole card.
 */

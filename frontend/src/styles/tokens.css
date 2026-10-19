@@ -5,7 +5,7 @@
 @tailwind utilities;
 
 /*
-  MAW — Smart Rail Guard design tokens
+  MAW - Smart Rail Guard design tokens
   Operational, technical, restrained. Neutral surfaces carry the layout;
   brand blue and accent orange are used intentionally, not decoratively.
 */
@@ -29,7 +29,7 @@
   --maw-accent-soft: #FDEEE0;
   --maw-accent-border: #F6CDA3;
 
-  /* Status — foreground / soft background / border, used as a set */
+  /* Status - foreground / soft background / border, used as a set */
   --maw-safe: #0F8A5F;
   --maw-safe-soft: #E6F4EE;
   --maw-safe-border: #B7E0CE;
@@ -51,7 +51,7 @@
   --maw-text-muted: #475569;
   --maw-text-subtle: #7A8699;
 
-  /* Elevation — restrained, single soft layer */
+  /* Elevation - restrained, single soft layer */
   --maw-shadow-sm: 0 1px 2px rgba(15, 23, 42, 0.04);
   --maw-shadow: 0 1px 3px rgba(15, 23, 42, 0.06), 0 1px 2px rgba(15, 23, 42, 0.04);
 
@@ -122,7 +122,7 @@ body {
   font-variant-numeric: tabular-nums;
 }
 
-/* Eyebrow / section label — the one consistent "technical" accent */
+/* Eyebrow / section label - the one consistent "technical" accent */
 .eyebrow {
   font-family: 'IBM Plex Mono', monospace;
   font-size: 10px;
@@ -147,7 +147,7 @@ body {
   background: var(--maw-text-subtle);
 }
 
-/* Focus ring — consistent, accessible */
+/* Focus ring - consistent, accessible */
 :focus-visible {
   outline: 2px solid var(--maw-primary);
   outline-offset: 2px;

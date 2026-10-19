@@ -64,8 +64,8 @@ export default function Network() {
               items={[
                 { label: 'Total nodes', value: health?.total_nodes ?? nodes.length },
                 { label: 'Online', value: health?.connected_nodes ?? 0, suffix: `/ ${health?.total_nodes ?? nodes.length}`, tone: 'safe' },
-                { label: 'Avg RSSI', value: health?.average_rssi ?? '—', suffix: 'dBm', tone: 'primary' },
-                { label: 'Avg SNR', value: health?.average_snr ?? '—', suffix: 'dB', tone: 'primary' },
+                { label: 'Avg RSSI', value: health?.average_rssi ?? '-', suffix: 'dBm', tone: 'primary' },
+                { label: 'Avg SNR', value: health?.average_snr ?? '-', suffix: 'dB', tone: 'primary' },
               ]}
             />
           </Card>
@@ -75,7 +75,7 @@ export default function Network() {
             <div className="p-5 sm:p-6">
               {gateway && (
                 <>
-                  {/* Gateway — a clear parent card, no glow / gradient. */}
+                  {/* Gateway - a clear parent card, no glow / gradient. */}
                   <div className="mx-auto max-w-md bg-maw-primary-soft border border-maw-primary/30 rounded-maw p-4 flex items-center gap-3.5">
                     <div className="flex items-center justify-center h-11 w-11 rounded-maw-sm bg-maw-primary text-white shrink-0">
                       <Radio size={20} />
@@ -109,15 +109,15 @@ export default function Network() {
                     <div className="space-y-2 pt-3 border-t border-maw-border-subtle text-xs">
                       <div className="flex justify-between">
                         <span className="text-maw-text-muted">RSSI</span>
-                        <span className="font-mono text-maw-text-main">{node.rssi ?? '—'} dBm</span>
+                        <span className="font-mono text-maw-text-main">{node.rssi ?? '-'} dBm</span>
                       </div>
                       <div className="flex justify-between">
                         <span className="text-maw-text-muted">SNR</span>
-                        <span className="font-mono text-maw-text-main">{node.snr ?? '—'} dB</span>
+                        <span className="font-mono text-maw-text-main">{node.snr ?? '-'} dB</span>
                       </div>
                       <div className="flex justify-between">
                         <span className="text-maw-text-muted">Battery</span>
-                        <span className={`font-mono font-semibold ${batteryTone(node.battery ?? 0)}`}>{node.battery ?? '—'}%</span>
+                        <span className={`font-mono font-semibold ${batteryTone(node.battery ?? 0)}`}>{node.battery ?? '-'}%</span>
                       </div>
                     </div>
                   </div>

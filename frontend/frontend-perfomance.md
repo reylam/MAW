@@ -1659,4 +1659,4 @@ Remains secure
 Remains maintainable
 ```
 
-Performance optimization is successful when users notice that the product feels better—not when the code merely looks more sophisticated.
+Performance optimization is successful when users notice that the product feels better-not when the code merely looks more sophisticated.

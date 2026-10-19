@@ -15,7 +15,7 @@ export default function CrossingDetailModal({ crossing, onClose }) {
     { name: 'HMC5883L', type: 'Compass', val: `${((crossing.sensors.magnetic ?? 0) * 1.5).toFixed(2)} µT`, status: 'online' },
     { name: 'MAX9814', type: 'Acoustic', val: `${crossing.sensors.acoustic ?? 0} dB`, status: 'online' },
     { name: 'ESP32', type: 'MCU', val: 'Operational', status: 'online' },
-    { name: 'LoRa SX1278', type: 'Transceiver', val: crossing.rssi != null ? `${crossing.rssi} dBm` : '—', status: crossing.connectivity },
+    { name: 'LoRa SX1278', type: 'Transceiver', val: crossing.rssi != null ? `${crossing.rssi} dBm` : '-', status: crossing.connectivity },
   ];
 
   const metrics = [

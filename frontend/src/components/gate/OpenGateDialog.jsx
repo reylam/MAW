@@ -9,7 +9,7 @@ import { X, AlertTriangle, ShieldAlert } from 'lucide-react';
   this and to record a reason before the action is sent to the backend.
 */
 const REASONS = [
-  'Sensor validation — crossing verified safe',
+  'Sensor validation - crossing verified safe',
   'Sensor malfunction',
   'Gate system malfunction',
   'Scheduled maintenance',
@@ -29,7 +29,7 @@ export default function OpenGateDialog({ crossingName, automaticStatus, onCancel
 
   const submit = (e) => {
     e.preventDefault();
-    const finalReason = note.trim() ? `${reason} — ${note.trim()}` : reason;
+    const finalReason = note.trim() ? `${reason} - ${note.trim()}` : reason;
     onConfirm(finalReason);
   };
 

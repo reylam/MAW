@@ -1,5 +1,5 @@
 /*
-  MAW — MongoDB initialization script.
+  MAW - MongoDB initialization script.
 
   Run against your MongoDB instance to create indexes and seed the operator
   roster:
@@ -11,15 +11,15 @@
   provided for provisioning a database independently of the app.
 
   Collections:
-    operators         — authorized operators (login validation)
-    crossings         — level crossing status (incl. barrier_status)
-    devices           — field sensor nodes / gateways
-    sensors           — individual sensors per device
-    hardware          — hardware components per crossing (Device Health)
-    telemetry         — time-series sensor readings
-    alerts            — raised alerts
-    events            — activity / audit log
-    gate_events       — manual gate-control actions (override audit trail)
+    operators         - authorized operators (login validation)
+    crossings         - level crossing status (incl. barrier_status)
+    devices           - field sensor nodes / gateways
+    sensors           - individual sensors per device
+    hardware          - hardware components per crossing (Device Health)
+    telemetry         - time-series sensor readings
+    alerts            - raised alerts
+    events            - activity / audit log
+    gate_events       - manual gate-control actions (override audit trail)
 */
 
 const collections = [

@@ -1863,7 +1863,7 @@ Split complexity when it becomes meaningful.
 
 For every frontend task, follow this workflow.
 
-## Phase 1 — Understand
+## Phase 1 - Understand
 
 * Inspect repository
 * Identify stack
@@ -1872,7 +1872,7 @@ For every frontend task, follow this workflow.
 * Identify reusable components
 * Understand existing design system
 
-## Phase 2 — Plan
+## Phase 2 - Plan
 
 Determine:
 
@@ -1884,7 +1884,7 @@ Determine:
 * responsive behavior
 * accessibility requirements
 
-## Phase 3 — Implement
+## Phase 3 - Implement
 
 Implement incrementally.
 
@@ -1900,7 +1900,7 @@ structure
 → polish
 ```
 
-## Phase 4 — Verify
+## Phase 4 - Verify
 
 Run:
 
@@ -1915,7 +1915,7 @@ when available.
 
 Then visually verify the UI.
 
-## Phase 5 — Refine
+## Phase 5 - Refine
 
 Fix:
 
@@ -1926,7 +1926,7 @@ Fix:
 * performance problems
 * console errors
 
-## Phase 6 — Report
+## Phase 6 - Report
 
 Summarize:
 

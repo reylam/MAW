@@ -1,6 +1,6 @@
 /*
   Base surface used across the app. One border treatment, one radius,
-  one restrained shadow — so every panel reads as the same system.
+  one restrained shadow - so every panel reads as the same system.
 */
 export function Card({ as: Tag = 'div', className = '', children, interactive = false, ...rest }) {
   return (

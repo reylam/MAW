@@ -19,7 +19,7 @@ const networkNodes = [
 // ever shows components that have actually connected and published.
 const hardware = [];
 // Authorized operators. In a real deployment this lives in the database / identity provider.
-// The full list is never exposed to the frontend — only validation results are returned.
+// The full list is never exposed to the frontend - only validation results are returned.
 const operators = [
   { id:'op-001', email:'operator@maw.id', name:'Operator', role:'operator', active:true },
   { id:'op-002', email:'operator@example.com', name:'Operator', role:'operator', active:true },

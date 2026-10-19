@@ -3,7 +3,7 @@ import StatCell from './StatCell';
 /*
   A row of metric cells with clean hairline separators that stay correct when
   the grid wraps on small screens. We use a 1px gap over a tinted background so
-  every seam is drawn by the background showing through — no doubled borders at
+  every seam is drawn by the background showing through - no doubled borders at
   wrap points. Meant to sit inside a Card (which supplies the outer border).
 */
 export default function StatGrid({ items, cols = 4 }) {

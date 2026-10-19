@@ -3,8 +3,8 @@ import { useSimulationStore } from '../../store/simulationStore';
 
 /*
   Shown whenever the dashboard is driven by simulated data instead of live
-  sensors. Uses the accent (orange) in a controlled, informational way — a
-  thin left rule rather than a loud filled card — so it signals "not live"
+  sensors. Uses the accent (orange) in a controlled, informational way - a
+  thin left rule rather than a loud filled card - so it signals "not live"
   without competing with real safety status.
 */
 export default function SimulationBanner({ note = 'Showing simulated data. Not connected to live sensors.' }) {

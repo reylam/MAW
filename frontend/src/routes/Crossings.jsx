@@ -80,7 +80,7 @@ export default function Crossings() {
                 </div>
 
                 <div className="mt-4 pt-3 border-t border-maw-border-subtle flex items-center justify-between text-xs text-maw-text-subtle">
-                  <span>Updated {crossing.lastUpdate ? new Date(crossing.lastUpdate).toLocaleTimeString('id-ID') : '—'}</span>
+                  <span>Updated {crossing.lastUpdate ? new Date(crossing.lastUpdate).toLocaleTimeString('id-ID') : '-'}</span>
                   <span className="flex items-center gap-0.5 text-maw-primary font-semibold group-hover:gap-1.5 transition-all">
                     Detail <ChevronRight size={13} />
                   </span>

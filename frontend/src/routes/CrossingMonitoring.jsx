@@ -62,10 +62,10 @@ export default function CrossingMonitoring() {
   ];
 
   const sensorReadings = [
-    { label: 'Vibration', value: crossing.sensors.vibration?.toFixed(2) ?? '—', unit: 'g (acceleration)' },
-    { label: 'Magnetic field', value: crossing.sensors.magnetic?.toFixed(2) ?? '—', unit: 'µT (microtesla)' },
-    { label: 'Sound level', value: crossing.sensors.acoustic?.toFixed(2) ?? '—', unit: 'dB (decibel)' },
-    { label: 'Signal strength', value: crossing.rssi ?? '—', unit: 'dBm (RSSI)' },
+    { label: 'Vibration', value: crossing.sensors.vibration?.toFixed(2) ?? '-', unit: 'g (acceleration)' },
+    { label: 'Magnetic field', value: crossing.sensors.magnetic?.toFixed(2) ?? '-', unit: 'µT (microtesla)' },
+    { label: 'Sound level', value: crossing.sensors.acoustic?.toFixed(2) ?? '-', unit: 'dB (decibel)' },
+    { label: 'Signal strength', value: crossing.rssi ?? '-', unit: 'dBm (RSSI)' },
   ];
 
   return (
@@ -92,7 +92,7 @@ export default function CrossingMonitoring() {
             <StatusBadge status={crossing.status} size="md" showIcon className="shrink-0" />
           </div>
 
-          {/* Safety state — the dominant block on this page. */}
+          {/* Safety state - the dominant block on this page. */}
           <div className={`rounded-maw border ${statusMeta.border} ${statusMeta.soft} p-5 ${crossing.status === 'critical' ? 'border-l-2 border-l-maw-critical' : ''}`}>
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-5">
               <SafetyPanel
@@ -107,7 +107,7 @@ export default function CrossingMonitoring() {
                 title="Obstacle detection"
                 detected={crossing.obstacleDetected}
                 textPositive="Crossing area is clear of obstructions."
-                textNegative="Foreign object detected in crossing area — immediate action required."
+                textNegative="Foreign object detected in crossing area - immediate action required."
               />
             </div>
           </div>
@@ -160,8 +160,8 @@ export default function CrossingMonitoring() {
                 <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 p-4 sm:p-5">
                   {[
                     { icon: Shield, label: 'Device', value: (crossing.connectivity || 'unknown').toUpperCase(), tone: 'text-maw-safe' },
-                    { icon: Wifi, label: 'Signal', value: crossing.rssi != null ? `${crossing.rssi} dBm` : '—', tone: 'text-maw-text-main' },
-                    { icon: Activity, label: 'Link quality', value: crossing.snr != null ? `${crossing.snr} dB SNR` : '—', tone: 'text-maw-text-main' },
+                    { icon: Wifi, label: 'Signal', value: crossing.rssi != null ? `${crossing.rssi} dBm` : '-', tone: 'text-maw-text-main' },
+                    { icon: Activity, label: 'Link quality', value: crossing.snr != null ? `${crossing.snr} dB SNR` : '-', tone: 'text-maw-text-main' },
                   ].map((d) => (
                     <div key={d.label} className="flex items-center gap-3 p-3.5 bg-maw-hover rounded-maw-sm border border-maw-border-subtle">
                       <div className="flex items-center justify-center h-9 w-9 rounded-maw-sm bg-maw-surface text-maw-primary border border-maw-border-subtle">
@@ -177,7 +177,7 @@ export default function CrossingMonitoring() {
               </Card>
 
               <div className="flex items-center justify-center gap-2 text-sm text-maw-text-subtle">
-                <Clock size={13} /> Last update {crossing.lastUpdate ? new Date(crossing.lastUpdate).toLocaleTimeString('id-ID') : '—'}
+                <Clock size={13} /> Last update {crossing.lastUpdate ? new Date(crossing.lastUpdate).toLocaleTimeString('id-ID') : '-'}
               </div>
             </>
           )}
@@ -222,7 +222,7 @@ export default function CrossingMonitoring() {
                         <div className="text-xs text-maw-text-muted">{event.description}</div>
                       </div>
                       <div className="text-xs font-mono text-maw-text-subtle shrink-0">
-                        {event.occurred_at ? new Date(event.occurred_at).toLocaleTimeString('id-ID') : '—'}
+                        {event.occurred_at ? new Date(event.occurred_at).toLocaleTimeString('id-ID') : '-'}
                       </div>
                     </div>
                   ))}

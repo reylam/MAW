@@ -76,7 +76,7 @@ export default function GateControl({ crossingId, crossingName }) {
           </div>
         )}
 
-        {/* Manual override banner — unmistakably distinct from automatic state. */}
+        {/* Manual override banner - unmistakably distinct from automatic state. */}
         {manual && (
           <div className="rounded-maw border-l-4 border-l-maw-accent border border-maw-accent-border bg-maw-accent-soft p-4">
             <div className="flex items-center gap-2 text-maw-accent-hover">
@@ -85,9 +85,9 @@ export default function GateControl({ crossingId, crossingName }) {
             </div>
             <dl className="mt-3 grid grid-cols-2 gap-y-2 gap-x-4 text-sm">
               <dt className="text-maw-text-muted">Operator</dt>
-              <dd className="font-semibold text-maw-text-main text-right truncate">{gate.operator?.name || '—'}</dd>
+              <dd className="font-semibold text-maw-text-main text-right truncate">{gate.operator?.name || '-'}</dd>
               <dt className="text-maw-text-muted">Reason</dt>
-              <dd className="font-medium text-maw-text-main text-right">{gate.reason || '—'}</dd>
+              <dd className="font-medium text-maw-text-main text-right">{gate.reason || '-'}</dd>
               {gate.since && (
                 <>
                   <dt className="text-maw-text-muted flex items-center gap-1"><Clock3 size={12} /> Since</dt>

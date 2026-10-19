@@ -1,6 +1,6 @@
-# MAW — Monitoring, Alert, Warning
+# MAW - Monitoring, Alert, Warning
 
-Smart Rail Guard — IoT Early Warning System for Unguarded Railway Level Crossings.
+Smart Rail Guard - IoT Early Warning System for Unguarded Railway Level Crossings.
 
 ## Overview
 
@@ -49,7 +49,7 @@ VITE_API_URL=http://localhost:5000/api
 1. Provision a MongoDB instance (local or MongoDB Atlas)
 2. Set `MONGODB_URI` and `MONGODB_DB` in `backend/.env`
 3. (Optional) Seed/provision: `mongosh "<MONGODB_URI>/maw" backend/database/init.mongo.js`
-4. Restart backend — it creates indexes and seeds demo data on first connect
+4. Restart backend - it creates indexes and seeds demo data on first connect
 
 ## Architecture
 
@@ -80,10 +80,10 @@ React Frontend
 
 ## Documentation
 
-- `agents.md` — primary requirements
-- `frontend/MAW_UI_UX_GUIDELINES.md` — design system
-- `backend_md/agents.md` — backend spec
-- `cross-evaluate/IMPLEMENTATION_RULES.md` — cross‑layer rules
+- `agents.md` - primary requirements
+- `frontend/MAW_UI_UX_GUIDELINES.md` - design system
+- `backend_md/agents.md` - backend spec
+- `cross-evaluate/IMPLEMENTATION_RULES.md` - cross‑layer rules
 
 ## Testing
 

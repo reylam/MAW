@@ -72,12 +72,12 @@ export default function Telemetry({ crossingId, crossing }) {
     return series.filter((p) => new Date(p.timestamp).getTime() >= since);
   }, [series, selectedHours]);
 
-  const fmt = (v, digits) => (v == null ? '—' : Number(v).toFixed(digits));
+  const fmt = (v, digits) => (v == null ? '-' : Number(v).toFixed(digits));
   const metrics = [
     { key: 'vibration', label: 'Vibration', color: '#005AA9', unit: 'g', current: fmt(latest(series, 'vibration'), 2), threshold: 0.75, over: (v) => v >= 0.75 },
     { key: 'magnetic', label: 'Magnetic field', color: '#0F8A5F', unit: 'µT', current: fmt(latest(series, 'magnetic'), 1), threshold: 40, over: (v) => v >= 40 },
     { key: 'acoustic', label: 'Sound level', color: '#F58220', unit: 'dB', current: fmt(latest(series, 'acoustic'), 0), threshold: 70, over: (v) => v >= 70 },
-    { key: 'rssi', label: 'Signal strength', color: '#64748B', unit: 'dBm', current: crossing?.rssi ?? '—', threshold: -90, over: () => false },
+    { key: 'rssi', label: 'Signal strength', color: '#64748B', unit: 'dBm', current: crossing?.rssi ?? '-', threshold: -90, over: () => false },
   ];
 
   const selected = metrics.find((m) => m.key === selectedMetric);
@@ -89,7 +89,7 @@ export default function Telemetry({ crossingId, crossing }) {
 
   return (
     <div className="space-y-5">
-      {/* Current readings — click to chart. */}
+      {/* Current readings - click to chart. */}
       <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
         {metrics.map((metric) => {
           const breached = metric.over(parseFloat(metric.current));
@@ -201,9 +201,9 @@ export default function Telemetry({ crossingId, crossing }) {
                     label={hw.status === 'online' ? 'OK' : hw.status || 'Unknown'}
                   />
                 </div>
-                <div className="text-xs text-maw-text-subtle mt-1.5">{[hw.component_type, hw.model].filter(Boolean).join(' · ') || '—'}</div>
+                <div className="text-xs text-maw-text-subtle mt-1.5">{[hw.component_type, hw.model].filter(Boolean).join(' · ') || '-'}</div>
                 <div className="text-xs text-maw-text-subtle font-mono mt-0.5">
-                  {hw.last_seen_at ? new Date(hw.last_seen_at).toLocaleTimeString('id-ID') : '—'}
+                  {hw.last_seen_at ? new Date(hw.last_seen_at).toLocaleTimeString('id-ID') : '-'}
                 </div>
               </div>
             ))}

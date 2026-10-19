@@ -2,7 +2,7 @@ import { ShieldCheck, AlertTriangle, OctagonAlert, WifiOff, CircleDot } from 'lu
 
 /*
   Single source of truth for how a crossing / device state is presented.
-  Never relies on colour alone — every status carries an icon and a label.
+  Never relies on colour alone - every status carries an icon and a label.
 */
 export const STATUS_META = {
   safe: {

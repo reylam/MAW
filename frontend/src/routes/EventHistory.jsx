@@ -75,7 +75,7 @@ export default function EventHistory() {
                     <div className="flex items-center gap-3 mt-2 text-[11px] font-mono text-maw-text-subtle">
                       <span>{event.crossing}</span>
                       <span className="text-maw-border-strong">·</span>
-                      <span>{event.timestamp ? new Date(event.timestamp).toLocaleTimeString('id-ID') : '—'}</span>
+                      <span>{event.timestamp ? new Date(event.timestamp).toLocaleTimeString('id-ID') : '-'}</span>
                     </div>
                   </div>
                 </li>

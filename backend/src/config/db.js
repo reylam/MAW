@@ -5,7 +5,7 @@ import { data } from '../data/demoData.js';
   MongoDB is the single persistent database for MAW.
 
   Connection is established once at startup via connectDB(). If MONGODB_URI is
-  not configured — or the connection fails — the backend transparently falls
+  not configured - or the connection fails - the backend transparently falls
   back to in-memory demo data so the dashboard still runs for demos. In both
   cases the service layer talks to the same interface, so API responses are
   identical regardless of the data source.
@@ -31,7 +31,7 @@ const COLLECTIONS = ['operators', 'crossings', 'devices', 'sensors', 'hardware',
 export async function connectDB() {
   const uri = process.env.MONGODB_URI;
   if (!uri) {
-    console.log('MONGODB_URI not set — using in-memory demo data');
+    console.log('MONGODB_URI not set - using in-memory demo data');
     return null;
   }
 
@@ -98,7 +98,7 @@ async function seedIfEmpty() {
 
   const reset = String(process.env.SEED_RESET || '').toLowerCase() === 'true';
   if (reset) {
-    console.log('SEED_RESET=true — clearing and re-seeding data collections');
+    console.log('SEED_RESET=true - clearing and re-seeding data collections');
     // Clear runtime collections too so stale state (old crossings' gate events) is removed.
     await db.collection('gate_events').deleteMany({});
   }
@@ -116,6 +116,6 @@ async function seedIfEmpty() {
       console.log(`Seeded ${docs.length} documents into "${name}"`);
     }
   }
-  // gate_events starts empty — populated by operator actions at runtime.
+  // gate_events starts empty - populated by operator actions at runtime.
   void COLLECTIONS;
 }

@@ -102,7 +102,7 @@ export default function Alerts() {
 
                 <div className="text-right shrink-0">
                   <div className="text-xs font-mono text-maw-text-subtle">
-                    {alert.timestamp ? new Date(alert.timestamp).toLocaleTimeString('id-ID') : '—'}
+                    {alert.timestamp ? new Date(alert.timestamp).toLocaleTimeString('id-ID') : '-'}
                   </div>
                   {alert.resolved ? (
                     <span className="inline-flex items-center gap-1 text-xs text-maw-safe font-semibold mt-2">

@@ -132,7 +132,7 @@ async function sweepOffline() {
 export function initMqtt() {
   const url = process.env.MQTT_URL;
   if (!url) {
-    console.log('MQTT_URL not set — hardware MQTT ingest disabled');
+    console.log('MQTT_URL not set - hardware MQTT ingest disabled');
     return null;
   }
 

@@ -83,7 +83,7 @@ export default function Dashboard() {
     <div className="p-4 sm:p-6 lg:p-8 space-y-5 max-w-[1500px] mx-auto">
       <SimulationBanner />
 
-      {/* Q1: Is the network currently safe? — the single dominant answer. */}
+      {/* Q1: Is the network currently safe? - the single dominant answer. */}
       <section className={`rounded-maw border ${bannerMeta.border} ${bannerMeta.soft} p-4 sm:p-5`}>
         <div className="flex items-start justify-between gap-4">
           <div className="flex items-start gap-3.5">
@@ -149,7 +149,7 @@ export default function Dashboard() {
                   </span>
                 )}
                 <span className="hidden md:block text-[11px] font-mono text-maw-text-subtle uppercase w-24 text-right">
-                  {String(crossing.barrierStatus || "—")} barrier
+                  {String(crossing.barrierStatus || "-")} barrier
                 </span>
                 <StatusBadge status={crossing.status} />
                 <ArrowUpRight size={14} className="text-maw-text-subtle shrink-0" />
@@ -235,12 +235,12 @@ export default function Dashboard() {
                 },
                 {
                   label: "Avg. signal (RSSI)",
-                  value: deviceHealth?.average_rssi != null ? `${Math.round(deviceHealth.average_rssi)} dBm` : "—",
+                  value: deviceHealth?.average_rssi != null ? `${Math.round(deviceHealth.average_rssi)} dBm` : "-",
                   status: "safe",
                 },
                 {
                   label: "Avg. battery",
-                  value: deviceHealth?.average_battery != null ? `${Math.round(deviceHealth.average_battery)}%` : "—",
+                  value: deviceHealth?.average_battery != null ? `${Math.round(deviceHealth.average_battery)}%` : "-",
                   status: (deviceHealth?.average_battery ?? 100) < 25 ? "warning" : "safe",
                 },
               ];
@@ -294,7 +294,7 @@ export default function Dashboard() {
         </Card>
       </div>
 
-      {/* Q7: where — entry point to the map, presented as an operational panel (no decorative glow). */}
+      {/* Q7: where - entry point to the map, presented as an operational panel (no decorative glow). */}
       <Card>
         <CardHeader
           eyebrow="Jakarta network"

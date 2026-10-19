@@ -382,7 +382,7 @@ export default function LiveMap() {
                   <div className="space-y-2 text-sm mb-4">
                     <div className="flex justify-between">
                       <span className="text-slate-600">Railway Line</span>
-                      <span className="font-medium text-slate-900">{crossing.railwayLine || '—'}</span>
+                      <span className="font-medium text-slate-900">{crossing.railwayLine || '-'}</span>
                     </div>
                     <div className="flex justify-between">
                       <span className="text-slate-600">Train Status</span>
@@ -403,7 +403,7 @@ export default function LiveMap() {
                   </div>
 
                   <div className="pt-3 border-t border-slate-100 text-xs text-slate-500">
-                    MAW Device: {crossing.connectivity} • Last update: {crossing.lastUpdate ? new Date(crossing.lastUpdate).toLocaleTimeString('id-ID') : '—'}
+                    MAW Device: {crossing.connectivity} • Last update: {crossing.lastUpdate ? new Date(crossing.lastUpdate).toLocaleTimeString('id-ID') : '-'}
                   </div>
                 </div>
               </Popup>

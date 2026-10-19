@@ -40,41 +40,41 @@ Backend runs on `http://localhost:5000`
 
 MongoDB is the single persistent database. Collections:
 
-- `operators` — authorized operators (login validation)
-- `crossings` — level crossing status (including `barrier_status`)
-- `devices` — field sensor nodes / gateways
-- `sensors` — individual sensors per device
-- `hardware` — hardware components per crossing (powers Device Health)
-- `telemetry` — time-series sensor readings
-- `alerts` — raised alerts
-- `events` — activity / audit log
-- `gate_events` — manual gate-control actions (override audit trail)
+- `operators` - authorized operators (login validation)
+- `crossings` - level crossing status (including `barrier_status`)
+- `devices` - field sensor nodes / gateways
+- `sensors` - individual sensors per device
+- `hardware` - hardware components per crossing (powers Device Health)
+- `telemetry` - time-series sensor readings
+- `alerts` - raised alerts
+- `events` - activity / audit log
+- `gate_events` - manual gate-control actions (override audit trail)
 
 ## API
 
-- `GET /api/health` — health check (reports `db: mongodb | demo`, `mqtt: connected | disconnected`)
-- `GET /api/crossings` — list crossings
-- `GET /api/crossings/:id` — crossing detail
-- `GET /api/alerts` — list alerts
-- `PATCH /api/alerts/:id/acknowledge` — acknowledge alert
-- `PATCH /api/alerts/:id/resolve` — resolve alert
-- `GET /api/telemetry` / `GET /api/telemetry/latest` — telemetry
-- `GET /api/devices` — hardware components (supports `?crossing_id=`), from the `hardware` collection
-- `GET /api/devices/health` — hardware health summary (online/degraded/offline, avg battery/RSSI)
-- `GET /api/events` — activity log (supports `?crossing_id=` and `?limit=`)
+- `GET /api/health` - health check (reports `db: mongodb | demo`, `mqtt: connected | disconnected`)
+- `GET /api/crossings` - list crossings
+- `GET /api/crossings/:id` - crossing detail
+- `GET /api/alerts` - list alerts
+- `PATCH /api/alerts/:id/acknowledge` - acknowledge alert
+- `PATCH /api/alerts/:id/resolve` - resolve alert
+- `GET /api/telemetry` / `GET /api/telemetry/latest` - telemetry
+- `GET /api/devices` - hardware components (supports `?crossing_id=`), from the `hardware` collection
+- `GET /api/devices/health` - hardware health summary (online/degraded/offline, avg battery/RSSI)
+- `GET /api/events` - activity log (supports `?crossing_id=` and `?limit=`)
 
 ### Operator authentication
 
-- `POST /api/auth/validate-operator` — body `{ "email": "..." }`.
+- `POST /api/auth/validate-operator` - body `{ "email": "..." }`.
   Validates the email against the authorized operator roster in MongoDB.
   Returns the operator's public fields on success; `403` when not authorized,
   `400` for a malformed email. The full roster is never returned to the client.
 
 ### Gate control (manual override)
 
-- `GET /api/crossings/:id/gate` — current gate state, including whether a
+- `GET /api/crossings/:id/gate` - current gate state, including whether a
   manual override is active, the operator, and the reason.
-- `POST /api/crossings/:id/gate` — body
+- `POST /api/crossings/:id/gate` - body
   `{ "action": "open|close|release", "operator": { "email", "name" }, "reason": "..." }`.
   The operator email is re-validated server-side. `open`/`close` set a manual
   override; `release` returns control to the automatic system. Every action is
@@ -92,11 +92,11 @@ visible on the web (Device Health page) without opening MQTTX.
 
 Configure in `.env`:
 
-- `MQTT_URL` — broker, e.g. `mqtt://broker.emqx.io:1883` (empty = ingest disabled)
-- `MQTT_TOPIC_ROOT` — default `maw/hardware`
-- `MQTT_CLIENT_ID` — default `maw-backend`
-- `MQTT_OFFLINE_TIMEOUT` — seconds of silence before a component is marked offline (default 30)
-- `MQTT_USERNAME` / `MQTT_PASSWORD` — optional, for authenticated brokers
+- `MQTT_URL` - broker, e.g. `mqtt://broker.emqx.io:1883` (empty = ingest disabled)
+- `MQTT_TOPIC_ROOT` - default `maw/hardware`
+- `MQTT_CLIENT_ID` - default `maw-backend`
+- `MQTT_OFFLINE_TIMEOUT` - seconds of silence before a component is marked offline (default 30)
+- `MQTT_USERNAME` / `MQTT_PASSWORD` - optional, for authenticated brokers
 
 **Publish contract**
 

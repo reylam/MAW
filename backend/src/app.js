@@ -74,7 +74,7 @@ app.get('/api/telemetry/latest', async (req, res) => {
   } catch (error) { res.status(500).json({ success: false, error: { message: error.message } }); }
 });
 
-// Auth — operator validation (email authorization). Returns only a yes/no plus
+// Auth - operator validation (email authorization). Returns only a yes/no plus
 // public operator fields; the full roster is never exposed to the client.
 app.post('/api/auth/validate-operator', async (req, res) => {
   try {

@@ -237,7 +237,7 @@ export const networkService = {
 
 // --- Operator authentication / validation ---------------------------------
 // Validates whether an email belongs to an authorized operator. We never return
-// the full roster — only a yes/no plus the matched operator's public fields.
+// the full roster - only a yes/no plus the matched operator's public fields.
 const normalizeEmail = (email) => String(email || '').trim().toLowerCase();
 const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 
@@ -390,7 +390,7 @@ export const gateService = {
       severity: action === 'open' ? 'warning' : 'info',
       crossing_id: crossingId,
       title: action === 'open' ? 'Gate opened manually' : 'Gate closed manually',
-      description: `${operator?.name || 'Operator'} ${action === 'open' ? 'opened' : 'closed'} the gate manually${reason ? ` — ${reason}` : ''}`,
+      description: `${operator?.name || 'Operator'} ${action === 'open' ? 'opened' : 'closed'} the gate manually${reason ? ` - ${reason}` : ''}`,
       metadata: { operator, reason, action },
     });
 
