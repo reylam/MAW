@@ -141,6 +141,36 @@ app.get('/api/devices/health', async (req, res) => {
   } catch (error) { res.status(500).json({ success: false, error: { message: error.message } }); }
 });
 
+// LoRa mesh network
+app.get('/api/network/nodes', async (req, res) => {
+  try {
+    const { data } = await services.networkService.getNodes(req.query);
+    res.json({ success: true, data });
+  } catch (error) { res.status(500).json({ success: false, error: { message: error.message } }); }
+});
+
+app.get('/api/network/nodes/:id', async (req, res) => {
+  try {
+    const { data } = await services.networkService.getById(req.params.id);
+    if (!data) return res.status(404).json({ success: false, error: { message: 'Node not found' } });
+    res.json({ success: true, data });
+  } catch (error) { res.status(500).json({ success: false, error: { message: error.message } }); }
+});
+
+app.get('/api/network/links', async (req, res) => {
+  try {
+    const { data } = await services.networkService.getLinks();
+    res.json({ success: true, data });
+  } catch (error) { res.status(500).json({ success: false, error: { message: error.message } }); }
+});
+
+app.get('/api/network/health', async (req, res) => {
+  try {
+    const { data } = await services.networkService.health();
+    res.json({ success: true, data });
+  } catch (error) { res.status(500).json({ success: false, error: { message: error.message } }); }
+});
+
 app.use((_req, res) => res.status(404).json({ success: false, error: { message: 'Route not found', code: 'ROUTE_NOT_FOUND' } }));
 app.use((error, _req, res, _next) => res.status(500).json({ success: false, error: { message: process.env.NODE_ENV === 'production' ? 'Internal server error' : error.message, code: 'INTERNAL_ERROR' } }));
 export default app;

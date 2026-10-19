@@ -165,7 +165,11 @@ export const telemetryService = {
       const rows = await db.collection('telemetry').find(filter).sort({ recorded_at: -1 }).limit(Number(limit)).toArray();
       return { data: cleanAll(rows) };
     }
-    return { data: data.telemetry.slice(-Number(limit)) };
+    let rows = data.telemetry;
+    if (crossing_id) rows = rows.filter((t) => t.crossing_id === crossing_id);
+    if (device_id) rows = rows.filter((t) => t.device_id === device_id);
+    if (metric) rows = rows.filter((t) => t.metric === metric);
+    return { data: rows.slice(-Number(limit)).reverse() };
   },
 
   async getLatest() {
@@ -175,6 +179,59 @@ export const telemetryService = {
       return { data: cleanAll(rows) };
     }
     return { data: data.telemetry.slice(-20) };
+  },
+};
+
+// --- LoRa mesh network -----------------------------------------------------
+// Nodes and links live in `network_nodes` / `network_links`; the health summary
+// is derived from the node list so it always matches what the topology shows.
+function summarizeNetwork(nodes) {
+  const radios = nodes.filter((n) => typeof n.rssi === 'number');
+  const avg = (items, key) => items.length
+    ? Math.round((items.reduce((a, n) => a + n[key], 0) / items.length) * 10) / 10
+    : null;
+  const online = nodes.filter((n) => n.status === 'online').length;
+  return {
+    status: nodes.length && online === nodes.length ? 'operational' : online ? 'degraded' : 'offline',
+    connected_nodes: online,
+    total_nodes: nodes.length,
+    average_rssi: avg(radios, 'rssi'),
+    average_snr: avg(radios.filter((n) => typeof n.snr === 'number'), 'snr'),
+  };
+}
+
+export const networkService = {
+  async getNodes(params = {}) {
+    const { crossing_id } = params;
+    const db = getDb();
+    if (db) {
+      const filter = {};
+      if (crossing_id) filter.crossing_id = crossing_id;
+      const rows = await db.collection('network_nodes').find(filter).sort({ node_type: -1, id: 1 }).toArray();
+      return { data: cleanAll(rows) };
+    }
+    let rows = [...data.networkNodes];
+    if (crossing_id) rows = rows.filter((n) => n.crossing_id === crossing_id);
+    return { data: rows };
+  },
+
+  async getById(id) {
+    const db = getDb();
+    const row = db
+      ? clean(await db.collection('network_nodes').findOne({ id }))
+      : data.networkNodes.find((n) => n.id === id);
+    return { data: row };
+  },
+
+  async getLinks() {
+    const db = getDb();
+    if (db) return { data: cleanAll(await db.collection('network_links').find().toArray()) };
+    return { data: data.networkLinks };
+  },
+
+  async health() {
+    const { data: nodes } = await this.getNodes();
+    return { data: summarizeNetwork(nodes) };
   },
 };
 

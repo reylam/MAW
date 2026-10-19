@@ -26,7 +26,7 @@ export function isConnected() {
   return connected;
 }
 
-const COLLECTIONS = ['operators', 'crossings', 'devices', 'sensors', 'hardware', 'telemetry', 'alerts', 'events', 'gate_events'];
+const COLLECTIONS = ['operators', 'crossings', 'devices', 'sensors', 'hardware', 'telemetry', 'alerts', 'events', 'gate_events', 'network_nodes', 'network_links'];
 
 export async function connectDB() {
   const uri = process.env.MONGODB_URI;
@@ -74,6 +74,8 @@ async function ensureIndexes() {
   await db.collection('alerts').createIndex({ severity: 1, status: 1 });
   await db.collection('events').createIndex({ occurred_at: -1 });
   await db.collection('gate_events').createIndex({ crossing_id: 1, timestamp: -1 });
+  await db.collection('network_nodes').createIndex({ id: 1 }, { unique: true });
+  await db.collection('network_links').createIndex({ id: 1 }, { unique: true });
 }
 
 // Seed collections from demo data when a collection is empty, so a fresh
@@ -90,6 +92,8 @@ async function seedIfEmpty() {
     telemetry: data.telemetry,
     alerts: data.alerts,
     events: data.events,
+    network_nodes: data.networkNodes,
+    network_links: data.networkLinks,
   };
 
   const reset = String(process.env.SEED_RESET || '').toLowerCase() === 'true';

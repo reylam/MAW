@@ -28,6 +28,15 @@ npm run dev
 
 Backend runs at `http://localhost:5000/api`
 
+### Mobile (Expo / React Native)
+
+```bash
+cd mobile
+npm install
+cp .env.example .env   # set EXPO_PUBLIC_API_URL (use your LAN IP on a physical phone)
+npm start              # scan QR with Expo Go
+```
+
 ### 3. Connect Frontend to Backend
 
 Set in `maw-dashboard/.env`:

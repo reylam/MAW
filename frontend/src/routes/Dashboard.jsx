@@ -1,28 +1,27 @@
 ﻿import { useEffect, useMemo, useState } from "react";
-import { mockAlerts, mockCrossings } from "../lib/mockData";
 import { useSimulationStore } from "../store/simulationStore";
-import { crossingService } from "../services/crossingService.js";
+import { useCrossingsLive } from "../hooks/useCrossingsLive.js";
 import { alertService } from "../services/alertService.js";
 import { eventService } from "../services/eventService.js";
 import { deviceService } from "../services/deviceService.js";
+import { toAlert, eventStatus } from "../lib/adapters.js";
 import { AlertTriangle, ShieldCheck, OctagonAlert, Train, Radio, ArrowUpRight, Clock3, MapPin, Activity } from "lucide-react";
 import { Link } from "react-router-dom";
 import { Card, CardHeader } from "../components/ui/Card";
 import StatGrid from "../components/ui/StatGrid";
 import StatusBadge, { getStatusMeta } from "../components/ui/StatusBadge";
 import SimulationBanner from "../components/ui/SimulationBanner";
-import { EmptyState } from "../components/ui/States";
+import { ApiErrorState, EmptyState, LoadingState } from "../components/ui/States";
 
 export default function Dashboard() {
   const { crossingStatuses } = useSimulationStore();
-  const [crossings, setCrossings] = useState(mockCrossings);
-  const [alerts, setAlerts] = useState(mockAlerts);
+  const { data: crossings, loading, error, reload } = useCrossingsLive();
+  const [alerts, setAlerts] = useState([]);
   const [events, setEvents] = useState([]);
   const [deviceHealth, setDeviceHealth] = useState(null);
 
   useEffect(() => {
-    crossingService.getAll().then((res) => setCrossings(res.data || mockCrossings)).catch(() => setCrossings(mockCrossings));
-    alertService.getAll({ status: 'active' }).then((res) => setAlerts(res.data || mockAlerts)).catch(() => setAlerts(mockAlerts));
+    alertService.getAll({ status: 'active' }).then((res) => setAlerts((res.data || []).map(toAlert))).catch(() => setAlerts([]));
     eventService.getAll({ limit: 6 }).then((res) => setEvents(res.data || [])).catch(() => setEvents([]));
     deviceService.health().then((res) => setDeviceHealth(res.data || null)).catch(() => setDeviceHealth(null));
   }, []);
@@ -52,12 +51,6 @@ export default function Dashboard() {
     .sort((a, b) => (a.type === "critical" ? -1 : 1) - (b.type === "critical" ? -1 : 1))
     .slice(0, 4);
 
-  const eventStatus = (ev) => {
-    if (ev.severity === "critical") return "critical";
-    if (ev.severity === "warning" || /gate|override/.test(ev.event_type || "")) return "warning";
-    return "safe";
-  };
-
   const banner = {
     critical: {
       icon: OctagonAlert,
@@ -78,6 +71,13 @@ export default function Dashboard() {
 
   const BannerIcon = banner.icon;
   const bannerMeta = getStatusMeta(systemStatus);
+
+  if (loading && crossings.length === 0) {
+    return <div className="p-4 sm:p-6 lg:p-8"><LoadingState label="Loading network status…" /></div>;
+  }
+  if (error) {
+    return <div className="p-4 sm:p-6 lg:p-8"><Card><ApiErrorState error={error} onRetry={reload} /></Card></div>;
+  }
 
   return (
     <div className="p-4 sm:p-6 lg:p-8 space-y-5 max-w-[1500px] mx-auto">
@@ -140,7 +140,7 @@ export default function Dashboard() {
                 <div className="min-w-0 flex-1">
                   <div className="text-sm font-semibold text-maw-text-main truncate">{crossing.name}</div>
                   <div className="text-xs text-maw-text-subtle truncate flex items-center gap-1">
-                    <MapPin size={11} /> {crossing.location || crossing.location_name}
+                    <MapPin size={11} /> {crossing.location}
                   </div>
                 </div>
                 {crossing.trainDetected && (

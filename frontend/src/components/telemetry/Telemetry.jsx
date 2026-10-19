@@ -1,10 +1,12 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useMemo } from 'react';
 import { XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, AreaChart, Area, ReferenceLine } from 'recharts';
-import { mockCrossings } from '../../lib/mockData';
 import { Card, CardHeader } from '../ui/Card';
-import { LoadingState } from '../ui/States';
+import { ApiErrorState, EmptyState, LoadingState } from '../ui/States';
 import StatusBadge from '../ui/StatusBadge';
-import { Activity } from 'lucide-react';
+import { Activity, Cpu } from 'lucide-react';
+import { telemetryService } from '../../services/telemetryService';
+import { deviceService } from '../../services/deviceService';
+import { METRIC_KEYS } from '../../lib/adapters';
 
 const TIME_RANGES = [
   { label: '1H', value: '1h', hours: 1 },
@@ -14,58 +16,76 @@ const TIME_RANGES = [
   { label: '7D', value: '7d', hours: 168 },
 ];
 
-const generateTelemetryData = (hours = 1, crossingId = 'crossing-03') => {
-  const now = new Date();
-  const dataPoints = [];
-  const interval = hours <= 1 ? 5 : hours <= 6 ? 15 : 30;
-  const totalPoints = Math.floor((hours * 60) / interval);
-
-  for (let i = totalPoints; i >= 0; i--) {
-    const timestamp = new Date(now - i * interval * 60000);
-    const isRecent = i < 5;
-    const crossing = mockCrossings.find((c) => c.id === crossingId);
-    const isCritical = crossing?.status === 'critical';
-
-    dataPoints.push({
-      time: timestamp.toLocaleTimeString('id-ID', { hour: '2-digit', minute: '2-digit' }),
-      timestamp: timestamp.toISOString(),
-      vibration: isCritical && isRecent ? 0.75 + Math.random() * 0.2 : 0.1 + Math.random() * 0.3,
-      magnetic: isCritical && isRecent ? 35 + Math.random() * 15 : 5 + Math.random() * 10,
-      acoustic: isCritical && isRecent ? 60 + Math.random() * 20 : 20 + Math.random() * 25,
-      rssi: -80 + Math.random() * 30,
-    });
+// Pivot telemetry rows (one row per metric sample) into chart points keyed by timestamp.
+function toSeries(rows) {
+  const byTime = new Map();
+  for (const row of rows) {
+    const key = METRIC_KEYS[row.metric];
+    if (!key) continue;
+    const point = byTime.get(row.recorded_at) || { timestamp: row.recorded_at };
+    point[key] = Number(row.value);
+    byTime.set(row.recorded_at, point);
   }
+  return [...byTime.values()]
+    .sort((a, b) => new Date(a.timestamp) - new Date(b.timestamp))
+    .map((p) => ({ ...p, time: new Date(p.timestamp).toLocaleTimeString('id-ID', { hour: '2-digit', minute: '2-digit' }) }));
+}
 
-  return dataPoints;
-};
+// Latest non-empty value of a metric (series may have gaps per metric).
+function latest(series, key) {
+  for (let i = series.length - 1; i >= 0; i--) if (series[i][key] != null) return series[i][key];
+  return null;
+}
 
-export default function Telemetry({ crossingId = 'crossing-03' }) {
-  const [timeRange, setTimeRange] = useState('1h');
-  const [data, setData] = useState([]);
+export default function Telemetry({ crossingId, crossing }) {
+  const [timeRange, setTimeRange] = useState('24h');
+  const [rows, setRows] = useState([]);
+  const [hardware, setHardware] = useState([]);
   const [selectedMetric, setSelectedMetric] = useState('vibration');
-  const [isLoading, setIsLoading] = useState(false);
+  const [isLoading, setIsLoading] = useState(true);
+  const [error, setError] = useState(null);
+  const [reloadKey, setReloadKey] = useState(0);
 
   const selectedHours = TIME_RANGES.find((r) => r.value === timeRange)?.hours || 1;
-  const crossing = mockCrossings.find((c) => c.id === crossingId);
 
   useEffect(() => {
+    let active = true;
     setIsLoading(true);
-    const timer = setTimeout(() => {
-      setData(generateTelemetryData(selectedHours, crossingId));
-      setIsLoading(false);
-    }, 500);
-    return () => clearTimeout(timer);
-  }, [timeRange, crossingId, selectedHours]);
+    setError(null);
+    Promise.all([
+      telemetryService.getAll({ crossing_id: crossingId, limit: 1000 }),
+      deviceService.getAll({ crossing_id: crossingId }).catch(() => ({ data: [] })),
+    ])
+      .then(([tel, dev]) => {
+        if (!active) return;
+        setRows(tel.data || []);
+        setHardware(dev.data || []);
+      })
+      .catch((err) => { if (active) setError(err); })
+      .finally(() => { if (active) setIsLoading(false); });
+    return () => { active = false; };
+  }, [crossingId, reloadKey]);
 
-  const last = data[data.length - 1] || {};
+  const series = useMemo(() => toSeries(rows), [rows]);
+  const data = useMemo(() => {
+    const since = Date.now() - selectedHours * 3600000;
+    return series.filter((p) => new Date(p.timestamp).getTime() >= since);
+  }, [series, selectedHours]);
+
+  const fmt = (v, digits) => (v == null ? '—' : Number(v).toFixed(digits));
   const metrics = [
-    { key: 'vibration', label: 'Vibration', color: '#005AA9', unit: 'g', current: last.vibration?.toFixed(2) ?? '0.00', threshold: 0.75, over: (v) => v >= 0.75 },
-    { key: 'magnetic', label: 'Magnetic field', color: '#0F8A5F', unit: 'µT', current: last.magnetic?.toFixed(1) ?? '0.0', threshold: 40, over: (v) => v >= 40 },
-    { key: 'acoustic', label: 'Sound level', color: '#F58220', unit: 'dB', current: last.acoustic?.toFixed(0) ?? '0', threshold: 70, over: (v) => v >= 70 },
-    { key: 'rssi', label: 'Signal strength', color: '#64748B', unit: 'dBm', current: last.rssi?.toFixed(0) ?? '-80', threshold: -90, over: () => false },
+    { key: 'vibration', label: 'Vibration', color: '#005AA9', unit: 'g', current: fmt(latest(series, 'vibration'), 2), threshold: 0.75, over: (v) => v >= 0.75 },
+    { key: 'magnetic', label: 'Magnetic field', color: '#0F8A5F', unit: 'µT', current: fmt(latest(series, 'magnetic'), 1), threshold: 40, over: (v) => v >= 40 },
+    { key: 'acoustic', label: 'Sound level', color: '#F58220', unit: 'dB', current: fmt(latest(series, 'acoustic'), 0), threshold: 70, over: (v) => v >= 70 },
+    { key: 'rssi', label: 'Signal strength', color: '#64748B', unit: 'dBm', current: crossing?.rssi ?? '—', threshold: -90, over: () => false },
   ];
 
   const selected = metrics.find((m) => m.key === selectedMetric);
+  const hasSeries = data.some((p) => p[selectedMetric] != null);
+
+  if (error) {
+    return <Card><ApiErrorState error={error} onRetry={() => setReloadKey((k) => k + 1)} /></Card>;
+  }
 
   return (
     <div className="space-y-5">
@@ -104,15 +124,38 @@ export default function Telemetry({ crossingId = 'crossing-03' }) {
           eyebrow={`Last ${selectedHours}h · ${crossing?.name || 'Crossing'}`}
           icon={Activity}
           action={
-            <div className="text-right">
-              <div className="text-[11px] text-maw-text-subtle">Threshold</div>
-              <div className="text-sm font-mono font-semibold text-maw-accent">{selected?.threshold} {selected?.unit}</div>
+            <div className="flex items-center gap-4">
+              <div className="flex items-center gap-1">
+                {TIME_RANGES.map((r) => (
+                  <button
+                    key={r.value}
+                    onClick={() => setTimeRange(r.value)}
+                    className={`px-2 py-1 rounded-maw-sm text-[11px] font-mono font-semibold ${
+                      timeRange === r.value ? 'bg-maw-primary text-white' : 'text-maw-text-muted hover:text-maw-text-main'
+                    }`}
+                  >
+                    {r.label}
+                  </button>
+                ))}
+              </div>
+              <div className="text-right">
+                <div className="text-[11px] text-maw-text-subtle">Threshold</div>
+                <div className="text-sm font-mono font-semibold text-maw-accent">{selected?.threshold} {selected?.unit}</div>
+              </div>
             </div>
           }
         />
         <div className="p-4 sm:p-5">
           {isLoading ? (
             <div className="h-72"><LoadingState label="Loading telemetry…" /></div>
+          ) : !hasSeries ? (
+            <div className="h-72 flex items-center justify-center">
+              <EmptyState
+                icon={Activity}
+                title="No telemetry in this range"
+                description={selectedMetric === 'rssi' ? 'Signal strength history is not recorded yet.' : 'Try a longer time range.'}
+              />
+            </div>
           ) : (
             <div className="h-72">
               <ResponsiveContainer width="100%" height="100%">
@@ -145,23 +188,27 @@ export default function Telemetry({ crossingId = 'crossing-03' }) {
       {/* Sensor status */}
       <Card>
         <CardHeader title="Sensor status" eyebrow="On-site hardware" />
-        <div className="grid grid-cols-2 lg:grid-cols-4 gap-px bg-maw-border-subtle">
-          {[
-            { name: 'MPU6050', type: 'Vibration', temp: '42°C' },
-            { name: 'HMC5883L', type: 'Magnetic', temp: '38°C' },
-            { name: 'MAX9814', type: 'Acoustic', temp: '35°C' },
-            { name: 'ESP32', type: 'MCU', temp: '45°C' },
-          ].map((sensor) => (
-            <div key={sensor.name} className="p-4 bg-maw-card">
-              <div className="flex items-center justify-between gap-2">
-                <span className="text-sm font-medium text-maw-text-main truncate">{sensor.name}</span>
-                <StatusBadge status="safe" label="OK" />
+        {hardware.length === 0 ? (
+          <EmptyState icon={Cpu} title="No hardware reporting" description="Components appear here once they publish over MQTT." />
+        ) : (
+          <div className="grid grid-cols-2 lg:grid-cols-4 gap-px bg-maw-border-subtle">
+            {hardware.map((hw) => (
+              <div key={hw.id} className="p-4 bg-maw-card">
+                <div className="flex items-center justify-between gap-2">
+                  <span className="text-sm font-medium text-maw-text-main truncate">{hw.name || hw.id}</span>
+                  <StatusBadge
+                    status={hw.status === 'online' ? 'safe' : hw.status === 'degraded' ? 'warning' : 'offline'}
+                    label={hw.status === 'online' ? 'OK' : hw.status || 'Unknown'}
+                  />
+                </div>
+                <div className="text-xs text-maw-text-subtle mt-1.5">{[hw.component_type, hw.model].filter(Boolean).join(' · ') || '—'}</div>
+                <div className="text-xs text-maw-text-subtle font-mono mt-0.5">
+                  {hw.last_seen_at ? new Date(hw.last_seen_at).toLocaleTimeString('id-ID') : '—'}
+                </div>
               </div>
-              <div className="text-xs text-maw-text-subtle mt-1.5">{sensor.type}</div>
-              <div className="text-xs text-maw-text-subtle font-mono mt-0.5">{sensor.temp}</div>
-            </div>
-          ))}
-        </div>
+            ))}
+          </div>
+        )}
       </Card>
     </div>
   );

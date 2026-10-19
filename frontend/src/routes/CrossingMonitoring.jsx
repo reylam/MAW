@@ -1,8 +1,11 @@
 import { useState } from 'react';
 import { ArrowLeft, AlertTriangle, Train, Shield, Activity, Wifi, Clock, MapPin } from 'lucide-react';
 import { useNavigate, useParams } from 'react-router-dom';
-import { mockCrossings } from '../lib/mockData';
 import { useSimulationStore } from '../store/simulationStore';
+import { useCrossingsLive } from '../hooks/useCrossingsLive';
+import { useEvents } from '../hooks/useEvents';
+import { eventStatus } from '../lib/adapters';
+import { ApiErrorState, EmptyState, LoadingState } from '../components/ui/States';
 import Telemetry from '../components/telemetry/Telemetry';
 import { Card, CardHeader } from '../components/ui/Card';
 import StatusBadge, { getStatusMeta } from '../components/ui/StatusBadge';
@@ -29,11 +32,27 @@ export default function CrossingMonitoring() {
   const navigate = useNavigate();
   const { crossingStatuses } = useSimulationStore();
 
-  const baseCrossing = mockCrossings.find((c) => c.id === id) || mockCrossings[0];
+  const [activeTab, setActiveTab] = useState('overview');
+  const { data: baseCrossing, loading, error, reload } = useCrossingsLive(id);
+  const { data: events, loading: eventsLoading } = useEvents({ crossing_id: id, limit: 20 });
+
+  if (loading && !baseCrossing) {
+    return <div className="p-4 sm:p-6 lg:p-8"><LoadingState label="Loading crossing…" /></div>;
+  }
+  if (error || !baseCrossing) {
+    return (
+      <div className="p-4 sm:p-6 lg:p-8 max-w-[1500px] mx-auto">
+        <Card>
+          {error?.message === 'Crossing not found' || !error
+            ? <EmptyState icon={AlertTriangle} title="Crossing not found" description={`No crossing with id "${id}".`} />
+            : <ApiErrorState error={error} onRetry={reload} />}
+        </Card>
+      </div>
+    );
+  }
+
   const crossing = { ...baseCrossing, status: crossingStatuses[id] || baseCrossing.status };
   const statusMeta = getStatusMeta(crossing.status);
-
-  const [activeTab, setActiveTab] = useState('overview');
 
   const tabs = [
     { id: 'overview', label: 'Overview' },
@@ -158,12 +177,12 @@ export default function CrossingMonitoring() {
               </Card>
 
               <div className="flex items-center justify-center gap-2 text-sm text-maw-text-subtle">
-                <Clock size={13} /> Last update {new Date(crossing.lastUpdate).toLocaleTimeString('id-ID')}
+                <Clock size={13} /> Last update {crossing.lastUpdate ? new Date(crossing.lastUpdate).toLocaleTimeString('id-ID') : '—'}
               </div>
             </>
           )}
 
-          {activeTab === 'telemetry' && <Telemetry crossingId={crossing.id} />}
+          {activeTab === 'telemetry' && <Telemetry crossingId={crossing.id} crossing={crossing} />}
 
           {activeTab === 'network' && (
             <Card>
@@ -189,23 +208,26 @@ export default function CrossingMonitoring() {
           {activeTab === 'history' && (
             <Card>
               <CardHeader title="Recent events" eyebrow="This crossing" icon={Clock} />
-              <div className="divide-y divide-maw-border-subtle">
-                {[
-                  { time: '17:42:13', type: 'critical', title: 'Obstacle detected', desc: 'Foreign object in crossing area' },
-                  { time: '17:41:57', type: 'critical', title: 'Train detected', desc: 'Approaching / crossing intersection' },
-                  { time: '17:41:42', type: 'warning', title: 'Abnormal vibration', desc: 'Sensor reading above threshold' },
-                  { time: '17:40:01', type: 'safe', title: 'System normal', desc: 'All crossings operating normally' },
-                ].map((event, i) => (
-                  <div key={i} className="flex gap-3 px-4 sm:px-5 py-3.5">
-                    <span className={`mt-1.5 status-dot ${getStatusMeta(event.type).dot}`} />
-                    <div className="flex-1 min-w-0">
-                      <div className="text-sm font-medium text-maw-text-main">{event.title}</div>
-                      <div className="text-xs text-maw-text-muted">{event.desc}</div>
+              {eventsLoading ? (
+                <LoadingState label="Loading events…" />
+              ) : events.length === 0 ? (
+                <EmptyState icon={Clock} title="No events for this crossing" />
+              ) : (
+                <div className="divide-y divide-maw-border-subtle">
+                  {events.map((event) => (
+                    <div key={event.id} className="flex gap-3 px-4 sm:px-5 py-3.5">
+                      <span className={`mt-1.5 status-dot ${getStatusMeta(eventStatus(event)).dot}`} />
+                      <div className="flex-1 min-w-0">
+                        <div className="text-sm font-medium text-maw-text-main">{event.title}</div>
+                        <div className="text-xs text-maw-text-muted">{event.description}</div>
+                      </div>
+                      <div className="text-xs font-mono text-maw-text-subtle shrink-0">
+                        {event.occurred_at ? new Date(event.occurred_at).toLocaleTimeString('id-ID') : '—'}
+                      </div>
                     </div>
-                    <div className="text-xs font-mono text-maw-text-subtle shrink-0">{event.time}</div>
-                  </div>
-                ))}
-              </div>
+                  ))}
+                </div>
+              )}
             </Card>
           )}
         </div>

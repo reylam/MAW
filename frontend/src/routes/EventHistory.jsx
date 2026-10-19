@@ -1,20 +1,11 @@
-import { useEffect, useState } from 'react';
-import { mockEventTimeline } from '../lib/mockData';
+import { useCallback, useEffect, useState } from 'react';
 import { eventService } from '../services/eventService';
 import PageHeader from '../components/ui/PageHeader';
 import { Card } from '../components/ui/Card';
 import { getStatusMeta } from '../components/ui/StatusBadge';
-import { EmptyState, LoadingState } from '../components/ui/States';
+import { ApiErrorState, EmptyState, LoadingState } from '../components/ui/States';
+import { eventStatus } from '../lib/adapters';
 import { Clock } from 'lucide-react';
-
-// Map backend severities / event types to the shared status vocabulary.
-function toStatus(ev) {
-  const s = ev.severity || '';
-  if (s === 'critical') return 'critical';
-  if (s === 'warning') return 'warning';
-  if (/gate|override/.test(ev.event_type || '')) return 'warning';
-  return 'safe';
-}
 
 function normalize(ev) {
   return {
@@ -23,7 +14,7 @@ function normalize(ev) {
     description: ev.description,
     timestamp: ev.occurred_at || ev.timestamp,
     crossing: ev.crossing_id || ev.crossing || 'System',
-    status: toStatus(ev),
+    status: eventStatus(ev),
     tag: ev.event_type || ev.type || 'event',
   };
 }
@@ -31,26 +22,19 @@ function normalize(ev) {
 export default function EventHistory() {
   const [events, setEvents] = useState([]);
   const [loading, setLoading] = useState(true);
+  const [error, setError] = useState(null);
 
-  useEffect(() => {
+  const load = useCallback(() => {
+    setLoading(true);
+    setError(null);
     eventService
       .getAll({ limit: 50 })
       .then((res) => setEvents((res.data || []).map(normalize)))
-      .catch(() =>
-        setEvents(
-          mockEventTimeline.map((e) => ({
-            id: e.id,
-            title: e.title,
-            description: e.description,
-            timestamp: e.timestamp,
-            crossing: e.crossing,
-            status: e.type === 'critical' ? 'critical' : e.type === 'warning' ? 'warning' : 'safe',
-            tag: e.type,
-          }))
-        )
-      )
+      .catch(setError)
       .finally(() => setLoading(false));
   }, []);
+
+  useEffect(() => { load(); }, [load]);
 
   return (
     <div className="p-4 sm:p-6 lg:p-8 space-y-5 max-w-[1000px] mx-auto">
@@ -63,6 +47,8 @@ export default function EventHistory() {
       <Card>
         {loading ? (
           <LoadingState label="Loading events…" />
+        ) : error ? (
+          <ApiErrorState error={error} onRetry={load} />
         ) : events.length === 0 ? (
           <EmptyState icon={Clock} title="No events logged" description="System and crossing events will appear here." />
         ) : (

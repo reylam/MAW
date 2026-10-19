@@ -24,6 +24,20 @@ export function LoadingState({ label = 'Loading…' }) {
   );
 }
 
+export function ApiErrorState({ error, onRetry }) {
+  return (
+    <ErrorState
+      title="Cannot reach the MAW API"
+      description={error?.message || 'Check that the backend is running.'}
+      action={onRetry && (
+        <button onClick={onRetry} className="px-3 py-1.5 rounded-maw-sm bg-maw-primary text-white text-xs font-semibold hover:bg-maw-primary-hover">
+          Retry
+        </button>
+      )}
+    />
+  );
+}
+
 export function ErrorState({ title = 'Something went wrong', description, action }) {
   return (
     <div className="flex flex-col items-center justify-center text-center px-6 py-12">

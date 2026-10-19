@@ -1,6 +1,8 @@
 import { useState } from 'react';
-import { mockCrossings } from '../lib/mockData';
-import { Radio, Train, ShieldAlert, ChevronRight, MapPin } from 'lucide-react';
+import { useCrossingsLive } from '../hooks/useCrossingsLive';
+import { useSimulationStore } from '../store/simulationStore';
+import { Radio, ChevronRight, MapPin } from 'lucide-react';
+import { ApiErrorState, EmptyState, LoadingState } from '../components/ui/States';
 import CrossingDetailModal from '../components/crossings/CrossingDetailModal';
 import PageHeader from '../components/ui/PageHeader';
 import { Card } from '../components/ui/Card';
@@ -17,6 +19,9 @@ function DetailRow({ label, value, tone }) {
 
 export default function Crossings() {
   const [selectedCrossing, setSelectedCrossing] = useState(null);
+  const { crossingStatuses } = useSimulationStore();
+  const { data, loading, error, reload } = useCrossingsLive();
+  const crossings = data.map((c) => ({ ...c, status: crossingStatuses[c.id] || c.status }));
 
   return (
     <div className="p-4 sm:p-6 lg:p-8 space-y-5 max-w-[1500px] mx-auto">
@@ -26,8 +31,14 @@ export default function Crossings() {
         description="Status and telemetry for monitored level crossings."
       />
 
+      {loading && crossings.length === 0 && <Card><LoadingState label="Loading crossings…" /></Card>}
+      {error && <Card><ApiErrorState error={error} onRetry={reload} /></Card>}
+      {!loading && !error && crossings.length === 0 && (
+        <Card><EmptyState icon={Radio} title="No crossings registered" description="Crossings added to the backend will appear here." /></Card>
+      )}
+
       <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4">
-        {mockCrossings.map((crossing) => {
+        {crossings.map((crossing) => {
           const meta = getStatusMeta(crossing.status);
           return (
             <Card
@@ -69,7 +80,7 @@ export default function Crossings() {
                 </div>
 
                 <div className="mt-4 pt-3 border-t border-maw-border-subtle flex items-center justify-between text-xs text-maw-text-subtle">
-                  <span>Updated {new Date(crossing.lastUpdate).toLocaleTimeString('id-ID')}</span>
+                  <span>Updated {crossing.lastUpdate ? new Date(crossing.lastUpdate).toLocaleTimeString('id-ID') : '—'}</span>
                   <span className="flex items-center gap-0.5 text-maw-primary font-semibold group-hover:gap-1.5 transition-all">
                     Detail <ChevronRight size={13} />
                   </span>

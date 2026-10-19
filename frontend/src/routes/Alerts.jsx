@@ -1,9 +1,10 @@
-import { useState } from 'react';
-import { mockAlerts } from '../lib/mockData';
+import { useCallback, useEffect, useState } from 'react';
 import { CheckCircle2, AlertTriangle, OctagonAlert, Info } from 'lucide-react';
 import PageHeader from '../components/ui/PageHeader';
 import { Card } from '../components/ui/Card';
-import { EmptyState } from '../components/ui/States';
+import { ApiErrorState, EmptyState, LoadingState } from '../components/ui/States';
+import { alertService } from '../services/alertService';
+import { toAlert } from '../lib/adapters';
 
 const FILTERS = ['all', 'critical', 'warning', 'system'];
 
@@ -15,8 +16,32 @@ const TYPE_META = {
 
 export default function Alerts() {
   const [filter, setFilter] = useState('all');
+  const [alerts, setAlerts] = useState([]);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState(null);
 
-  const filteredAlerts = mockAlerts.filter((a) => (filter === 'all' ? true : a.type === filter));
+  const load = useCallback(() => {
+    setLoading(true);
+    setError(null);
+    alertService
+      .getAll({ limit: 100 })
+      .then((res) => setAlerts((res.data || []).map(toAlert)))
+      .catch(setError)
+      .finally(() => setLoading(false));
+  }, []);
+
+  useEffect(() => { load(); }, [load]);
+
+  const updateAlert = async (action, id) => {
+    try {
+      const res = await alertService[action](id);
+      if (res.data) setAlerts((prev) => prev.map((a) => (a.id === id ? toAlert(res.data) : a)));
+    } catch (err) {
+      console.error(`Failed to ${action} alert`, err);
+    }
+  };
+
+  const filteredAlerts = alerts.filter((a) => (filter === 'all' ? true : a.type === filter));
 
   return (
     <div className="p-4 sm:p-6 lg:p-8 space-y-5 max-w-[1100px] mx-auto">
@@ -41,7 +66,11 @@ export default function Alerts() {
         }
       />
 
-      {filteredAlerts.length === 0 ? (
+      {loading && alerts.length === 0 ? (
+        <Card><LoadingState label="Loading alerts…" /></Card>
+      ) : error ? (
+        <Card><ApiErrorState error={error} onRetry={load} /></Card>
+      ) : filteredAlerts.length === 0 ? (
         <Card>
           <EmptyState icon={CheckCircle2} title="No alerts" description={`No ${filter === 'all' ? '' : filter + ' '}alerts to show right now.`} />
         </Card>
@@ -73,16 +102,29 @@ export default function Alerts() {
 
                 <div className="text-right shrink-0">
                   <div className="text-xs font-mono text-maw-text-subtle">
-                    {new Date(alert.timestamp).toLocaleTimeString('id-ID')}
+                    {alert.timestamp ? new Date(alert.timestamp).toLocaleTimeString('id-ID') : '—'}
                   </div>
                   {alert.resolved ? (
                     <span className="inline-flex items-center gap-1 text-xs text-maw-safe font-semibold mt-2">
                       <CheckCircle2 size={13} /> Resolved
                     </span>
                   ) : (
-                    <span className="inline-flex items-center gap-1 text-xs text-maw-text-muted font-medium mt-2">
-                      <span className={`status-dot ${meta.dot} ${isUrgent ? 'animate-maw-alert' : ''}`} /> Active
-                    </span>
+                    <>
+                      <span className="inline-flex items-center gap-1 text-xs text-maw-text-muted font-medium mt-2">
+                        <span className={`status-dot ${meta.dot} ${isUrgent ? 'animate-maw-alert' : ''}`} />
+                        {alert.status === 'acknowledged' ? 'Acknowledged' : 'Active'}
+                      </span>
+                      <div className="flex justify-end gap-3 mt-2">
+                        {alert.status !== 'acknowledged' && (
+                          <button onClick={() => updateAlert('acknowledge', alert.id)} className="text-[11px] font-semibold text-maw-primary hover:text-maw-primary-hover">
+                            Acknowledge
+                          </button>
+                        )}
+                        <button onClick={() => updateAlert('resolve', alert.id)} className="text-[11px] font-semibold text-maw-safe hover:opacity-80">
+                          Resolve
+                        </button>
+                      </div>
+                    </>
                   )}
                 </div>
               </Card>

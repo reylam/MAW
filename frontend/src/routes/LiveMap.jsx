@@ -1,7 +1,9 @@
 import { useState, useEffect, useCallback } from 'react';
 import { MapContainer, TileLayer, Marker, Popup, Polyline, useMapEvents, useMap, GeoJSON, LayersControl, LayerGroup, ZoomControl } from 'react-leaflet';
 import L from 'leaflet';
-import { mockCrossings } from '../lib/mockData';
+import { useCrossingsLive } from '../hooks/useCrossingsLive';
+import { useSimulationStore } from '../store/simulationStore';
+import { hasValidCoordinates } from '../lib/adapters';
 import { LocateFixed, ZoomIn, ZoomOut, Train, Loader } from 'lucide-react';
 import 'leaflet/dist/leaflet.css';
 import '../styles/map.css';
@@ -294,16 +296,17 @@ export default function LiveMap() {
     setSelectedCrossing(crossing);
   };
 
-  const safeCount = mockCrossings.filter(c => c.status === 'safe').length;
-  const warningCount = mockCrossings.filter(c => c.status === 'warning').length;
-  const criticalCount = mockCrossings.filter(c => c.status === 'critical').length;
-  const offlineCount = mockCrossings.filter(c => c.status === 'offline').length;
+  const { crossingStatuses } = useSimulationStore();
+  const { data, error: crossingsError } = useCrossingsLive();
+  const crossings = data.map((c) => ({ ...c, status: crossingStatuses[c.id] || c.status }));
 
-  // Filter crossings that are near railway (validation)
-  const validCrossings = mockCrossings.filter(crossing => {
-    // Basic validation: crossing should have railway line property
-    return crossing.railwayLine;
-  });
+  const safeCount = crossings.filter(c => c.status === 'safe').length;
+  const warningCount = crossings.filter(c => c.status === 'warning').length;
+  const criticalCount = crossings.filter(c => c.status === 'critical').length;
+  const offlineCount = crossings.filter(c => c.status === 'offline').length;
+
+  // Only crossings with usable coordinates can be placed on the map.
+  const validCrossings = crossings.filter(hasValidCoordinates);
 
   return (
     <div className="p-4 sm:p-6 lg:p-8 h-full flex flex-col max-w-[1600px] mx-auto w-full">
@@ -350,7 +353,7 @@ export default function LiveMap() {
           />
 
           {/* ONLY THEN: Crossing Markers (only if railway data is loaded) */}
-          {railwayCount !== null && validCrossings.map((crossing) => (
+          {(railwayCount !== null || railwayError) && validCrossings.map((crossing) => (
             <Marker
               key={crossing.id}
               position={[crossing.coordinates.lat, crossing.coordinates.lng]}
@@ -379,7 +382,7 @@ export default function LiveMap() {
                   <div className="space-y-2 text-sm mb-4">
                     <div className="flex justify-between">
                       <span className="text-slate-600">Railway Line</span>
-                      <span className="font-medium text-slate-900">{crossing.railwayLine}</span>
+                      <span className="font-medium text-slate-900">{crossing.railwayLine || '—'}</span>
                     </div>
                     <div className="flex justify-between">
                       <span className="text-slate-600">Train Status</span>
@@ -400,7 +403,7 @@ export default function LiveMap() {
                   </div>
 
                   <div className="pt-3 border-t border-slate-100 text-xs text-slate-500">
-                    MAW Device: {crossing.connectivity} • Last update: {new Date(crossing.lastUpdate).toLocaleTimeString('id-ID')}
+                    MAW Device: {crossing.connectivity} • Last update: {crossing.lastUpdate ? new Date(crossing.lastUpdate).toLocaleTimeString('id-ID') : '—'}
                   </div>
                 </div>
               </Popup>
@@ -456,6 +459,13 @@ export default function LiveMap() {
           </div>
         )}
 
+        {crossingsError && (
+          <div className="absolute top-24 left-3 bg-maw-card rounded-maw border border-maw-critical-border p-3 shadow-maw z-[1000] max-w-[220px]">
+            <div className="text-xs font-semibold text-maw-critical">Cannot reach the MAW API</div>
+            <div className="text-[11px] text-maw-text-muted mt-1">{crossingsError.message}</div>
+          </div>
+        )}
+
         {/* Location Error */}
         {locationError && (
           <div className="absolute bottom-3 right-3 bg-maw-critical-soft border border-maw-critical-border text-maw-critical px-3.5 py-2 rounded-maw shadow-maw text-sm z-[1000]">
@@ -477,7 +487,7 @@ export default function LiveMap() {
               </button>
             </div>
             <StatusBadge status={selectedCrossing.status} showIcon />
-            <div className="text-sm text-maw-text-muted mt-2">{selectedCrossing.railwayLine}</div>
+            {selectedCrossing.railwayLine && <div className="text-sm text-maw-text-muted mt-2">{selectedCrossing.railwayLine}</div>}
             <div className="text-xs text-maw-text-subtle mb-3">{selectedCrossing.location}</div>
             <a
               href={`/crossing/${selectedCrossing.id}`}
