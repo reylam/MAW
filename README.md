@@ -1,111 +1,120 @@
 # MAW - Monitoring, Alert, Warning
 
-Smart Rail Guard - IoT Early Warning System for Unguarded Railway Level Crossings.
+Smart Rail Guard: an IoT early warning system for unguarded railway level crossings.
 
-## Overview
+A sensor node at the crossing fuses vibration, load, magnetic and sound readings into a **Fusion Score** and publishes it over MQTT. The backend turns that into one clear instruction for the guard: **close the barrier now**, **get ready**, or **the barrier may open**. The guard sees it on the MAW Petugas phone app, and operators see the same thing on the web dashboard.
 
-The project consists of a **React/Vite frontend** (`maw-dashboard/`) and an **Express.js/MongoDB backend** (`backend/`) that together implement the monitoring, alert, and warning system for railway crossings.
+The system never operates the barrier by itself. It only instructs; the guard closes it and confirms.
 
-## Quick Start
+## What is in this repository
 
-### 1. Run Frontend (demo mode)
+| Folder | What | Docs |
+|---|---|---|
+| [backend/](backend/) | Express.js + MongoDB API, MQTT ingest, decision engine, WebSocket | [backend/README.md](backend/README.md) |
+| [frontend/](frontend/) | React + Vite operator dashboard | [frontend/README.md](frontend/README.md) |
+| [mobile/](mobile/) | Expo / React Native app for the guard (MAW Petugas) | [mobile/README.md](mobile/README.md), [mobile/DESIGN.md](mobile/DESIGN.md) |
 
-```bash
-cd maw-dashboard
-npm install
-npm run dev
+## How it works
+
+```
+Sensor node (ESP32) --LoRa--> Gateway --MQTT--> broker.emqx.io
+                                                    |
+              topic mqx/node/data (fusion score)    |   topic maw/hardware/... (device status)
+                                                    v
+                                  Backend (Express.js)
+                                  - decision engine (state machine)
+                                  - alerts, events, device status in MongoDB
+                                      |                  |
+                               REST /api/...       WebSocket /ws
+                                      |                  |
+                              Web dashboard        Mobile app (guard)
 ```
 
-Frontend runs at `http://localhost:5173`
+Barrier states, calculated once in the backend so every screen agrees:
 
-### 2. Run Backend (demo mode)
+| State | Meaning | Instruction |
+|---|---|---|
+| AMAN | Fusion Score below 0.40, data fresh | Barrier may open |
+| SIAGA | 0.40 to 0.60 | Get ready to close |
+| TUTUP | 0.60 or more, or the node reports DANGER | Close the barrier now, confirm within 20 s |
+| MENUNGGU AMAN | Score is low again, 20 s hold running | Keep it closed |
+| CEK MANUAL | Stale data, broker down, or a registered device is disconnected | Manual check, do not rely on the screen |
+
+The rules (thresholds, hold time, fail-safe behaviour) are in [mobile/DESIGN.md](mobile/DESIGN.md).
+
+## Quick start
+
+Needs Node.js 20.19.4 or newer.
 
 ```bash
+# 1. Backend  (http://localhost:5000)
 cd backend
 npm install
+cp .env.example .env        # then fill MONGODB_URI (or leave empty for demo data)
 npm run dev
-```
 
-Backend runs at `http://localhost:5000/api`
+# 2. Web dashboard  (http://localhost:5173)
+cd frontend
+npm install
+cp .env.example .env
+npm run dev
 
-### Mobile (Expo / React Native)
-
-```bash
+# 3. Mobile app  (scan the QR with Expo Go)
 cd mobile
 npm install
-cp .env.example .env   # set EXPO_PUBLIC_API_URL (use your LAN IP on a physical phone)
-npm start              # scan QR with Expo Go
+cp .env.example .env        # set EXPO_PUBLIC_API_URL to your laptop LAN IP
+npm start
 ```
 
-### 3. Connect Frontend to Backend
+Sign in with an operator email registered in the backend, for example `operator@maw.id`.
 
-Set in `maw-dashboard/.env`:
-```
-VITE_API_URL=http://localhost:5000/api
-```
+## Try it without hardware
 
-## Full Implementation (MongoDB)
-
-1. Provision a MongoDB instance (local or MongoDB Atlas)
-2. Set `MONGODB_URI` and `MONGODB_DB` in `backend/.env`
-3. (Optional) Seed/provision: `mongosh "<MONGODB_URI>/maw" backend/database/init.mongo.js`
-4. Restart backend - it creates indexes and seeds demo data on first connect
-
-## Architecture
-
-```
-IoT / Simulation
-    ↓
-MQTT (future)
-    ↓
-Express.js (backend)
-    ↓
-MongoDB
-    ↓
-REST API + Demo Data
-    ↓
-React Frontend
-```
-
-## Key Features
-
-- **Dashboard:** Real‑time system status, crossing alerts, fusion score
-- **Crossing Monitoring:** List view, detail view, real‑time telemetry
-- **Alert Center:** Filter, acknowledge, resolve
-- **Live Map:** Leaflet OpenStreetMap with railway overlays
-- **Network Topology:** LoRa Mesh visualization
-- **Simulation Center:** Train‑approaching scenario demo
-- **Device Health:** Hardware status, battery, connectivity
-- **Event History:** Timeline view
-
-## Documentation
-
-- `agents.md` - primary requirements
-- `frontend/MAW_UI_UX_GUIDELINES.md` - design system
-- `backend_md/agents.md` - backend spec
-- `cross-evaluate/IMPLEMENTATION_RULES.md` - cross‑layer rules
-
-## Testing
-
-Backend:
+With the backend running, from `backend/`:
 
 ```bash
-cd backend
-npm test
+npm run s4      # SAFE     -> barrier may open
+npm run s5      # WARNING  -> get ready to close
+npm run s3      # DANGER   -> close the barrier now (alarm on phone and web)
+npm run train   # a whole train passing, start to finish
 ```
 
-Frontend lint/build:
+These publish the same payloads the real node sends, through the real MQTT broker. The web Simulation Center page runs the same scenarios directly on the backend.
+
+Device status can be changed the same way:
 
 ```bash
-cd maw-dashboard
-npm run lint
-npm run build
+npm run disconnected_MPU6500    # crossing goes to manual check, alert and pop-up
+npm run connected_MPU6500
 ```
 
-## Simulation Flow
+Available devices: `ESP32`, `MPU6500`, `HX711`, `HMC5883L`, `MAX9814`.
 
-1. Open `/simulation`
-2. Select “Train Approaching”
-3. Watch magnetic/vibration/acoustic detection stages
-4. See alert generated, crossing status changes
-5. Acknowledge and resolve the incident
+## MQTT topics
+
+| Topic | Payload | Used for |
+|---|---|---|
+| `mqx/node/data` | Fusion Score JSON from the node (see [mobile/DESIGN.md](mobile/DESIGN.md) section 8.1) | Barrier decisions |
+| `maw/hardware/<crossing_id>/<device>` | `{"status": "connected"}` or `{"status": "disconnected"}` | Device health |
+
+## Tests and checks
+
+```bash
+cd backend  && npm test               # decision engine, deadline, device faults
+cd frontend && npm run build && npm run lint
+cd mobile   && npm run typecheck && npm run doctor
+```
+
+## Troubleshooting
+
+| Symptom | Cause and fix |
+|---|---|
+| `GET /api/health` shows `db: demo` and the log says `SSL alert number 80` | MongoDB Atlas is rejecting this machine. Add your public IP in Atlas under Network Access, then restart the backend. |
+| The phone cannot open the app or reach the backend | The laptop Wi-Fi is set to a Public network, so Windows blocks the ports. Set it to Private and allow ports 5000 and 8081. Use the laptop LAN IP, not `localhost`, in `mobile/.env`. |
+| Phone app is stuck on CEK MANUAL | No fresh data in the last 15 s. Run `npm run s4` in `backend/`, or check that every registered device is connected. |
+
+## Security notes
+
+- The MongoDB URI and MQTT credentials live only in `backend/.env`, which is not committed.
+- `broker.emqx.io` is a public broker without authentication. Use a unique topic prefix for your team, and a private broker with TLS and per-node credentials for field tests (see [mobile/DESIGN.md](mobile/DESIGN.md) section 9).
+- Variables starting with `VITE_` or `EXPO_PUBLIC_` are shipped inside the web and mobile apps. Never put secrets there.

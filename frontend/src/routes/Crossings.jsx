@@ -5,7 +5,7 @@ import { ApiErrorState, EmptyState, LoadingState } from '../components/ui/States
 import CrossingDetailModal from '../components/crossings/CrossingDetailModal';
 import PageHeader from '../components/ui/PageHeader';
 import { Card } from '../components/ui/Card';
-import StatusBadge, { getStatusMeta } from '../components/ui/StatusBadge';
+import StatusBadge from '../components/ui/StatusBadge';
 
 function DetailRow({ label, value, tone }) {
   return (
@@ -36,7 +36,6 @@ export default function Crossings() {
 
       <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4">
         {crossings.map((crossing) => {
-          const meta = getStatusMeta(crossing.status);
           return (
             <Card
               key={crossing.id}

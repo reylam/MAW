@@ -1,5 +1,5 @@
 import { useState, useEffect, useCallback } from 'react';
-import { MapContainer, TileLayer, Marker, Popup, Polyline, useMapEvents, useMap, GeoJSON, LayersControl, LayerGroup, ZoomControl } from 'react-leaflet';
+import { MapContainer, TileLayer, Marker, Popup, useMap, GeoJSON, ZoomControl } from 'react-leaflet';
 import L from 'leaflet';
 import { useCrossingsLive } from '../hooks/useCrossingsLive';
 import { hasValidCoordinates } from '../lib/adapters';
@@ -23,18 +23,6 @@ L.Icon.Default.mergeOptions({
 const DEFAULT_CENTER = [-6.2088, 106.8456];
 const DEFAULT_ZOOM = 10;
 
-// Railway lines in Jakarta area (from Overpass API/OpenStreetMap - railway=rail)
-const getOverpassQueryForRailway = (bounds) => {
-  const { south, west, north, east } = bounds;
-  return `[out:json][timeout:25];
-  (
-    way["railway"="rail"](${south},${west},${north},${east});
-  );
-  out body;
-  >;
-  out skel qt;`;
-};
-
 // Major Indonesian cities for search
 const INDONESIAN_CITIES = [
   { name: 'Jakarta', lat: -6.2088, lng: 106.8456 },
@@ -48,14 +36,7 @@ const INDONESIAN_CITIES = [
 ];
 
 // Custom marker icons for crossing status
-const createCustomIcon = (status, type = 'crossing') => {
-  const colors = {
-    safe: '#10B981',
-    warning: '#F59E0B',
-    critical: '#EF4444',
-    offline: '#64748B',
-  };
-
+const createCustomIcon = (status) => {
   const pulse = status === 'critical' ? 'pulse-animation' : '';
 
   return L.divIcon({
@@ -86,13 +67,8 @@ const railwayStyle = {
 function RailwayLayer({ onRailwayLoad, onRailwayError }) {
   const map = useMap();
   const [railwayData, setRailwayData] = useState(null);
-  const [loading, setLoading] = useState(false);
-  const [error, setError] = useState(null);
 
   const fetchRailwayData = useCallback(async () => {
-    setLoading(true);
-    setError(null);
-    
     try {
       const bounds = map.getBounds();
       const { _southWest: sw, _northEast: ne } = bounds;
@@ -156,10 +132,7 @@ function RailwayLayer({ onRailwayLoad, onRailwayError }) {
       onRailwayLoad?.(geoJson.features.length);
       
     } catch (err) {
-      setError(err.message);
       onRailwayError?.(err.message);
-    } finally {
-      setLoading(false);
     }
   }, [map, onRailwayLoad, onRailwayError]);
 
@@ -236,32 +209,24 @@ function MapControls({ onLocateMe, railwayCount }) {
   );
 }
 
-function UserLocationMarker({ position }) {
-  if (!position) return null;
-  
-  return L.divIcon({
-    html: `
-      <div class="user-location-marker">
-        <div class="animate-ping"></div>
-        <div class="inner"></div>
-      </div>
-    `,
-    className: 'user-location-icon',
-    iconSize: [30, 30],
-  });
-}
+const userIcon = L.divIcon({
+  html: '<div class="user-location-marker"><div class="animate-ping"></div><div class="inner"></div></div>',
+  className: 'user-location-icon',
+  iconSize: [30, 30],
+});
 
-// Helper function to calculate distance
-function calculateDistance(lat1, lon1, lat2, lon2) {
-  const R = 6371;
-  const dLat = (lat2 - lat1) * Math.PI / 180;
-  const dLon = (lon2 - lon1) * Math.PI / 180;
-  const a = 
-    Math.sin(dLat/2) * Math.sin(dLat/2) +
-    Math.cos(lat1 * Math.PI / 180) * Math.cos(lat2 * Math.PI / 180) * 
-    Math.sin(dLon/2) * Math.sin(dLon/2);
-  const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1-a));
-  return R * c;
+// "Locate me": move the map to the device position and mark it.
+function UserLocation({ position }) {
+  const map = useMap();
+  useEffect(() => {
+    if (position) map.flyTo([position.lat, position.lng], 14);
+  }, [map, position]);
+  if (!position) return null;
+  return (
+    <Marker position={[position.lat, position.lng]} icon={userIcon}>
+      <Popup>You are here</Popup>
+    </Marker>
+  );
 }
 
 export default function LiveMap() {
@@ -284,7 +249,7 @@ export default function LiveMap() {
         setUserLocation({ lat: latitude, lng: longitude });
         setLocationError(null);
       },
-      (error) => {
+      () => {
         setLocationError("Location access denied");
       },
       { enableHighAccuracy: true }
@@ -407,6 +372,8 @@ export default function LiveMap() {
             </Marker>
           ))}
 
+          <UserLocation position={userLocation} />
+
           {/* Custom Controls */}
           {mapReady && <MapControls onLocateMe={handleLocateMe} railwayCount={railwayCount} />}
           <ZoomControl position="bottomright" />
@@ -499,11 +466,13 @@ export default function LiveMap() {
       {/* Status Summary */}
       <Card className="mt-5 overflow-hidden">
         <StatGrid
+          cols={5}
           items={[
             { label: 'Validated crossings', value: validCrossings.length },
             { label: 'Safe', value: safeCount, tone: 'safe' },
             { label: 'Warning', value: warningCount, tone: warningCount ? 'warning' : 'muted' },
             { label: 'Critical', value: criticalCount, tone: criticalCount ? 'critical' : 'muted' },
+            { label: 'Offline', value: offlineCount, tone: 'muted' },
           ]}
         />
       </Card>
