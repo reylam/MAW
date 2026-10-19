@@ -1,41 +1,34 @@
 import { useEffect } from 'react';
+import { ActivityIndicator, View } from 'react-native';
 import { StatusBar } from 'expo-status-bar';
-import { Pressable, StyleSheet, Text, View } from 'react-native';
-import { API_URL } from '@/config/env';
-import { useHealthStore } from '@/store/useHealthStore';
+import { SafeAreaProvider } from 'react-native-safe-area-context';
+import { setupAlarms } from '@/hooks/useAlarms';
+import { useAuthStore } from '@/store/useAuthStore';
+import { useTheme } from '@/theme/tokens';
+import LoginScreen from '@/screens/LoginScreen';
+import MonitorScreen from '@/screens/MonitorScreen';
 
 export default function App() {
-  const { status, error, check } = useHealthStore();
+  const theme = useTheme();
+  const { operator, ready, restore } = useAuthStore();
 
   useEffect(() => {
-    check();
-  }, [check]);
+    restore();
+    setupAlarms();
+  }, [restore]);
 
   return (
-    <View style={styles.container}>
-      <Text style={styles.title}>MAW Mobile</Text>
-      <Text style={styles.subtitle}>Smart Rail Guard</Text>
-      <Text>API: {API_URL}</Text>
-      <Text>Backend: {status}{error ? ` (${error})` : ''}</Text>
-      <Pressable style={styles.button} onPress={check}>
-        <Text style={styles.buttonText}>Cek ulang</Text>
-      </Pressable>
-      <StatusBar style="auto" />
-    </View>
+    <SafeAreaProvider>
+      <StatusBar style={theme.bg === '#0E1116' ? 'light' : 'dark'} />
+      {!ready ? (
+        <View style={{ flex: 1, alignItems: 'center', justifyContent: 'center', backgroundColor: theme.bg }}>
+          <ActivityIndicator color={theme.text} />
+        </View>
+      ) : operator ? (
+        <MonitorScreen />
+      ) : (
+        <LoginScreen />
+      )}
+    </SafeAreaProvider>
   );
 }
-
-const styles = StyleSheet.create({
-  container: {
-    flex: 1,
-    backgroundColor: '#fff',
-    alignItems: 'center',
-    justifyContent: 'center',
-    gap: 8,
-    padding: 16,
-  },
-  title: { fontSize: 24, fontWeight: '700' },
-  subtitle: { fontSize: 16, color: '#555', marginBottom: 12 },
-  button: { marginTop: 12, backgroundColor: '#1d4ed8', paddingHorizontal: 16, paddingVertical: 10, borderRadius: 8 },
-  buttonText: { color: '#fff', fontWeight: '600' },
-});

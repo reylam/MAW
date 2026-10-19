@@ -11,6 +11,7 @@ import { Card, CardHeader } from '../components/ui/Card';
 import StatusBadge, { getStatusMeta } from '../components/ui/StatusBadge';
 import SimulationBanner from '../components/ui/SimulationBanner';
 import GateControl from '../components/gate/GateControl';
+import BarrierInstruction from '../components/maw/BarrierInstruction';
 
 function SafetyPanel({ icon: Icon, title, detected, textPositive, textNegative }) {
   return (
@@ -140,6 +141,7 @@ export default function CrossingMonitoring() {
         <div className="max-w-[1500px] mx-auto w-full space-y-5">
           {activeTab === 'overview' && (
             <>
+              <BarrierInstruction crossingId={crossing.id} />
               <GateControl crossingId={crossing.id} crossingName={crossing.name} />
 
               <Card>

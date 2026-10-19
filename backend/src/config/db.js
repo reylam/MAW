@@ -26,7 +26,7 @@ export function isConnected() {
   return connected;
 }
 
-const COLLECTIONS = ['operators', 'crossings', 'devices', 'sensors', 'hardware', 'telemetry', 'alerts', 'events', 'gate_events', 'network_nodes', 'network_links'];
+const COLLECTIONS = ['operators', 'crossings', 'devices', 'sensors', 'hardware', 'telemetry', 'alerts', 'events', 'gate_events', 'network_nodes', 'network_links', 'node_readings'];
 
 export async function connectDB() {
   const uri = process.env.MONGODB_URI;
@@ -76,6 +76,8 @@ async function ensureIndexes() {
   await db.collection('gate_events').createIndex({ crossing_id: 1, timestamp: -1 });
   await db.collection('network_nodes').createIndex({ id: 1 }, { unique: true });
   await db.collection('network_links').createIndex({ id: 1 }, { unique: true });
+  await db.collection('node_readings').createIndex({ node_id: 1, received_at: -1 });
+  await db.collection('events').createIndex({ crossing_id: 1, event_type: 1, occurred_at: -1 });
 }
 
 // Seed collections from demo data when a collection is empty, so a fresh

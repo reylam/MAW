@@ -6,8 +6,8 @@ export const useTelemetryStore = create((set) => ({
   nodeHealth: {},
   events: [],
   settings: {
-    weights: { vibration: 0.5, magnetic: 0.3, acoustic: 0.2 },
-    threshold: 0.75,
+    weights: { v_norm: 0.35, l_norm: 0.3, m_norm: 0.2, s_norm: 0.15 },
+    threshold: 0.6,
   },
   isConnected: false,
   lastSync: null,

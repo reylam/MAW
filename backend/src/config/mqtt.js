@@ -1,6 +1,8 @@
 import mqtt from 'mqtt';
 import { getDb } from './db.js';
 import { data } from '../data/demoData.js';
+import { mawNodeTopic } from './maw.js';
+import { getEngine } from '../maw/runtime.js';
 
 /*
   MQTT ingest for hardware health.
@@ -29,6 +31,9 @@ import { data } from '../data/demoData.js';
 
   Liveness: any message refreshes last_seen_at. A component that goes silent
   for longer than MQTT_OFFLINE_TIMEOUT seconds is marked offline automatically.
+
+  Sensor node data (fusion score) arrives on MAW_NODE_TOPIC (default
+  maw/node/data, DESIGN.md 8.1) and is handed to the MAW decision engine.
 */
 
 let clientRef = null;
@@ -144,19 +149,30 @@ export function initMqtt() {
   if (process.env.MQTT_USERNAME) options.username = process.env.MQTT_USERNAME;
   if (process.env.MQTT_PASSWORD) options.password = process.env.MQTT_PASSWORD;
 
-  const topic = `${TOPIC_ROOT}/#`;
+  const nodeTopic = mawNodeTopic();
+  const topics = [`${TOPIC_ROOT}/#`, nodeTopic];
   const client = mqtt.connect(url, options);
   clientRef = client;
 
+  const engine = getEngine();
+  engine.setLinkFault('Koneksi broker terputus');
+  client.on('close', () => engine.setLinkFault('Koneksi broker terputus'));
   client.on('connect', () => {
+    engine.setLinkFault(null);
     console.log(`MQTT connected → ${url}`);
-    client.subscribe(topic, (err) => {
+    client.subscribe(topics, (err) => {
       if (err) console.error('MQTT subscribe failed:', err.message);
-      else console.log(`MQTT subscribed → ${topic}`);
+      else console.log(`MQTT subscribed → ${topics.join(', ')}`);
     });
   });
 
-  client.on('message', (t, m) => { handleMessage(t, m).catch((e) => console.error('MQTT handle error:', e.message)); });
+  client.on('message', (t, m) => {
+    if (t === nodeTopic) {
+      getEngine().ingest(m, { source: 'mqtt' });
+      return;
+    }
+    handleMessage(t, m).catch((e) => console.error('MQTT handle error:', e.message));
+  });
   client.on('error', (e) => console.error('MQTT error:', e.message));
   client.on('reconnect', () => console.log('MQTT reconnecting…'));
 

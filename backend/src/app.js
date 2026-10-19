@@ -6,6 +6,7 @@ import morgan from 'morgan';
 import * as services from './services/index.js';
 import { isConnected } from './config/db.js';
 import { isMqttConnected } from './config/mqtt.js';
+import { getEngine } from './maw/runtime.js';
 
 const app = express();
 app.use(helmet());
@@ -169,6 +170,71 @@ app.get('/api/network/health', async (req, res) => {
     const { data } = await services.networkService.health();
     res.json({ success: true, data });
   } catch (error) { res.status(500).json({ success: false, error: { message: error.message } }); }
+});
+
+// MAW petugas: palang instruction state (DESIGN.md 8.6). Live updates use WebSocket /ws.
+app.get('/api/maw/config', (_req, res) => {
+  const { weights, T_TUTUP, T_SIAGA, HOLD_BUKA_S, STALE_MAX_S, HEARTBEAT_S, SCORE_TOL } = getEngine().config;
+  res.json({ success: true, data: { weights, T_TUTUP, T_SIAGA, HOLD_BUKA_S, STALE_MAX_S, HEARTBEAT_S, SCORE_TOL } });
+});
+
+app.get('/api/maw/crossings', (_req, res) => {
+  res.json({ success: true, data: getEngine().listStates() });
+});
+
+app.get('/api/maw/diagnostics', (_req, res) => {
+  res.json({ success: true, data: getEngine().diagnostics() });
+});
+
+app.get('/api/crossings/:id/state', (req, res) => {
+  const data = getEngine().getState(req.params.id);
+  if (!data) return res.status(404).json({ success: false, error: { message: 'Crossing is not monitored by any node' } });
+  res.json({ success: true, data });
+});
+
+app.post('/api/crossings/:id/ack', async (req, res) => {
+  try {
+    const { operator } = req.body || {};
+    if (!operator?.email) {
+      return res.status(401).json({ success: false, error: { message: 'Operator session required.' } });
+    }
+    const authz = await services.operatorService.validate(operator.email);
+    if (!authz.authorized) {
+      return res.status(403).json({ success: false, error: { message: 'Operator is not authorized.' } });
+    }
+    const result = getEngine().acknowledge(req.params.id, authz.operator);
+    if (result.notFound) return res.status(404).json({ success: false, error: { message: 'Crossing is not monitored by any node' } });
+    if (result.conflict) return res.status(409).json({ success: false, error: { message: result.conflict } });
+    res.json({ success: true, data: result.data });
+  } catch (error) { res.status(500).json({ success: false, error: { message: error.message } }); }
+});
+
+app.get('/api/crossings/:id/events', async (req, res) => {
+  try {
+    const { date, limit = 10 } = req.query;
+    let since;
+    if (date === 'today') {
+      const start = new Date();
+      start.setHours(0, 0, 0, 0);
+      since = start.toISOString();
+    }
+    const { data } = await services.eventService.getAll({
+      crossing_id: req.params.id,
+      event_type: 'maw_state,maw_ack,maw_score_mismatch',
+      since,
+      limit,
+    });
+    res.json({ success: true, data });
+  } catch (error) { res.status(500).json({ success: false, error: { message: error.message } }); }
+});
+
+// Feed a node payload without hardware (development/demo only).
+app.post('/api/maw/simulate', (req, res) => {
+  if (process.env.NODE_ENV === 'production') {
+    return res.status(404).json({ success: false, error: { message: 'Route not found', code: 'ROUTE_NOT_FOUND' } });
+  }
+  const result = getEngine().ingest(req.body || {}, { source: 'simulate' });
+  res.status(result.accepted ? 200 : 422).json({ success: result.accepted, data: result });
 });
 
 app.use((_req, res) => res.status(404).json({ success: false, error: { message: 'Route not found', code: 'ROUTE_NOT_FOUND' } }));

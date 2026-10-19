@@ -1,93 +1,87 @@
-import { useState } from 'react';
-import { SlidersHorizontal, Gauge } from 'lucide-react';
+import { useCallback, useEffect, useState } from 'react';
+import { SlidersHorizontal, Gauge, Timer } from 'lucide-react';
 import PageHeader from '../components/ui/PageHeader';
 import { Card, CardHeader } from '../components/ui/Card';
+import { ApiErrorState, LoadingState } from '../components/ui/States';
+import { mawService } from '../services/mawService';
 
-function WeightSlider({ label, value, onChange }) {
+// Detection parameters live in the backend config (MAW_* env, see backend/.env.example)
+// so every client and the ESP32 firmware use the same values. This page only displays them.
+
+const SENSORS = [
+  { field: 'v_norm', label: 'Vibration', hw: 'MPU6500' },
+  { field: 'l_norm', label: 'Load', hw: 'Load Cell HX711' },
+  { field: 'm_norm', label: 'Magnetic', hw: 'HMC5883L' },
+  { field: 's_norm', label: 'Acoustic', hw: 'MAX9814' },
+];
+
+function Row({ label, sub, value }) {
   return (
-    <div>
-      <div className="flex justify-between items-center mb-2">
-        <span className="text-sm text-maw-text-main font-medium">{label}</span>
-        <span className="font-mono text-sm font-semibold text-maw-primary bg-maw-primary-soft px-2.5 py-0.5 rounded-maw-sm">
-          {value.toFixed(2)}
-        </span>
+    <div className="flex items-center justify-between gap-3 py-3 border-b border-maw-border-subtle last:border-0">
+      <div className="min-w-0">
+        <div className="text-sm text-maw-text-main font-medium">{label}</div>
+        {sub && <div className="text-xs text-maw-text-subtle">{sub}</div>}
       </div>
-      <input
-        type="range"
-        min="0"
-        max="1"
-        step="0.05"
-        value={value}
-        onChange={(e) => onChange(parseFloat(e.target.value))}
-        className="w-full h-1.5 bg-maw-border rounded-full appearance-none cursor-pointer accent-maw-primary"
-      />
+      <span className="font-mono text-sm font-semibold text-maw-primary bg-maw-primary-soft px-2.5 py-0.5 rounded-maw-sm">{value}</span>
     </div>
   );
 }
 
 export default function Settings() {
-  const [weights, setWeights] = useState({ vibration: 0.5, magnetic: 0.3, acoustic: 0.2 });
-  const [threshold, setThreshold] = useState(0.75);
+  const [config, setConfig] = useState(null);
+  const [error, setError] = useState(null);
 
-  const total = weights.vibration + weights.magnetic + weights.acoustic;
-  const isValid = Math.abs(total - 1.0) < 0.01;
+  const load = useCallback(() => {
+    setError(null);
+    mawService.getConfig().then((res) => setConfig(res.data)).catch(setError);
+  }, []);
+  useEffect(() => { load(); }, [load]);
+
+  const total = config ? SENSORS.reduce((a, s) => a + config.weights[s.field], 0) : 0;
 
   return (
     <div className="p-4 sm:p-6 lg:p-8 space-y-5 max-w-3xl mx-auto">
       <PageHeader
         eyebrow="Configuration"
         title="Detection settings"
-        description="Tune the sensor fusion model used to detect train presence."
+        description="Sensor fusion parameters currently enforced by the backend. Change them via MAW_* variables in backend/.env; T_TUTUP must match the ESP32 firmware threshold."
       />
 
-      <Card>
-        <CardHeader title="Weight calibration" eyebrow="Sensor fusion" icon={SlidersHorizontal} />
-        <div className="p-5 sm:p-6 space-y-6">
-          <p className="text-sm text-maw-text-muted">
-            Adjust how strongly each sensor contributes to the fusion score. Weights must total 1.00.
-          </p>
-          <WeightSlider label="Vibration weight" value={weights.vibration} onChange={(v) => setWeights({ ...weights, vibration: v })} />
-          <WeightSlider label="Magnetic weight" value={weights.magnetic} onChange={(v) => setWeights({ ...weights, magnetic: v })} />
-          <WeightSlider label="Acoustic weight" value={weights.acoustic} onChange={(v) => setWeights({ ...weights, acoustic: v })} />
+      {error ? (
+        <Card><ApiErrorState error={error} onRetry={load} /></Card>
+      ) : !config ? (
+        <Card><LoadingState label="Loading configuration…" /></Card>
+      ) : (
+        <>
+          <Card>
+            <CardHeader title="Sensor weights" eyebrow="Fusion Score = Σ weight × normalized value" icon={SlidersHorizontal} />
+            <div className="px-5 sm:px-6 pb-2">
+              {SENSORS.map((s) => (
+                <Row key={s.field} label={s.label} sub={`${s.hw} · ${s.field}`} value={config.weights[s.field].toFixed(2)} />
+              ))}
+              <Row label="Total" value={`${total.toFixed(2)} / 1.00 ${Math.abs(total - 1) < 0.001 ? '✓' : '✗'}`} />
+            </div>
+          </Card>
 
-          <div className="pt-4 border-t border-maw-border-subtle flex justify-between items-center">
-            <span className="text-sm text-maw-text-muted font-medium">Total weight</span>
-            <span
-              className={`font-mono text-sm font-semibold px-3 py-1 rounded-maw-sm border ${
-                isValid
-                  ? 'bg-maw-safe-soft border-maw-safe-border text-maw-safe'
-                  : 'bg-maw-critical-soft border-maw-critical-border text-maw-critical'
-              }`}
-            >
-              {total.toFixed(2)} / 1.00 {isValid ? '✓' : '✗'}
-            </span>
-          </div>
-        </div>
-      </Card>
+          <Card>
+            <CardHeader title="Thresholds" eyebrow="Barrier instruction" icon={Gauge} />
+            <div className="px-5 sm:px-6 pb-2">
+              <Row label="Close threshold (T_TUTUP)" sub="Score at or above: close the barrier" value={config.T_TUTUP.toFixed(2)} />
+              <Row label="Standby / release threshold (T_SIAGA)" sub="Score must fall below this before opening" value={config.T_SIAGA.toFixed(2)} />
+              <Row label="Score tolerance (SCORE_TOL)" sub="Allowed node vs recomputed difference" value={config.SCORE_TOL.toFixed(2)} />
+            </div>
+          </Card>
 
-      <Card>
-        <CardHeader title="Activation threshold" eyebrow="Alarm trigger" icon={Gauge} />
-        <div className="p-5 sm:p-6 space-y-4">
-          <p className="text-sm text-maw-text-muted">The fusion score above which the system raises an alarm.</p>
-          <div className="flex justify-between items-center bg-maw-hover p-4 rounded-maw-sm border border-maw-border-subtle">
-            <span className="text-sm text-maw-text-main font-medium">Current threshold</span>
-            <span className="font-mono text-xl font-bold text-maw-accent">{threshold.toFixed(2)}</span>
-          </div>
-          <input
-            type="range"
-            min="0.1"
-            max="0.95"
-            step="0.05"
-            value={threshold}
-            onChange={(e) => setThreshold(parseFloat(e.target.value))}
-            className="w-full h-1.5 bg-maw-border rounded-full appearance-none cursor-pointer accent-maw-accent"
-          />
-          <div className="flex justify-between text-xs text-maw-text-subtle">
-            <span>More sensitive</span>
-            <span>More conservative</span>
-          </div>
-        </div>
-      </Card>
+          <Card>
+            <CardHeader title="Timing" eyebrow="Fail-safe" icon={Timer} />
+            <div className="px-5 sm:px-6 pb-2">
+              <Row label="Safe hold (HOLD_BUKA)" sub="Score must stay low this long before OPEN" value={`${config.HOLD_BUKA_S} s`} />
+              <Row label="Stale data limit (STALE_MAX)" sub="No data this long: manual check" value={`${config.STALE_MAX_S} s`} />
+              <Row label="Node heartbeat" sub="Expected publish interval from each sensor node" value={`${config.HEARTBEAT_S} s`} />
+            </div>
+          </Card>
+        </>
+      )}
     </div>
   );
 }

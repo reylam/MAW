@@ -44,6 +44,27 @@ export const crossingService = {
     const row = data.crossings.find((c) => c.id === id);
     return { data: row };
   },
+
+  // Mirror the MAW decision state into the crossing record used by the web dashboard.
+  async syncStatus(id, { status, train_detected }) {
+    const fields = { status, train_detected, last_updated_at: new Date().toISOString() };
+    const db = getDb();
+    if (db) {
+      await db.collection('crossings').updateOne({ id }, { $set: fields });
+      return;
+    }
+    const row = data.crossings.find((c) => c.id === id);
+    if (row) Object.assign(row, fields);
+  },
+};
+
+// Raw node messages (DESIGN.md 8.1) kept for calibration and technicians.
+export const readingService = {
+  async record(reading) {
+    const db = getDb();
+    if (!db) return;
+    await db.collection('node_readings').insertOne({ ...reading, received_at: new Date(reading.received_at).toISOString() });
+  },
 };
 
 // Device Health is backed by the `hardware` collection: the physical
@@ -403,16 +424,21 @@ const demoEvents = Array.isArray(data.events) ? [...data.events] : [];
 
 export const eventService = {
   async getAll(params = {}) {
-    const { crossing_id, limit = 50 } = params;
+    const { crossing_id, limit = 50, since, event_type } = params;
+    const types = event_type ? String(event_type).split(',') : null;
     const db = getDb();
     if (db) {
       const filter = {};
       if (crossing_id) filter.crossing_id = crossing_id;
+      if (since) filter.occurred_at = { $gte: since };
+      if (types) filter.event_type = { $in: types };
       const rows = await db.collection('events').find(filter).sort({ occurred_at: -1 }).limit(Number(limit)).toArray();
       return { data: cleanAll(rows) };
     }
     let rows = [...demoEvents].sort((a, b) => new Date(b.occurred_at) - new Date(a.occurred_at));
     if (crossing_id) rows = rows.filter((e) => e.crossing_id === crossing_id);
+    if (since) rows = rows.filter((e) => e.occurred_at >= since);
+    if (types) rows = rows.filter((e) => types.includes(e.event_type));
     return { data: rows.slice(0, Number(limit)) };
   },
 
