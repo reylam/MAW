@@ -1,7 +1,7 @@
 import { useEffect, useRef } from 'react';
 import { Vibration } from 'react-native';
 import { setAudioModeAsync, useAudioPlayer, type AudioPlayer } from 'expo-audio';
-import * as Notifications from 'expo-notifications';
+import { getNotifications } from '@/lib/notifications';
 import type { MawState } from '@/types/maw';
 
 /*
@@ -16,17 +16,18 @@ import type { MawState } from '@/types/maw';
 const CHANNEL_ALARM = 'maw-alarm';
 const CHANNEL_INFO = 'maw-info';
 
-Notifications.setNotificationHandler({
-  handleNotification: async () => ({
-    shouldShowBanner: true,
-    shouldShowList: true,
-    shouldPlaySound: false, // the app plays its own alarm tones
-    shouldSetBadge: false,
-  }),
-});
-
 export async function setupAlarms() {
   await setAudioModeAsync({ playsInSilentMode: true, interruptionMode: 'duckOthers' }).catch(() => {});
+  const Notifications = getNotifications();
+  if (!Notifications) return;
+  Notifications.setNotificationHandler({
+    handleNotification: async () => ({
+      shouldShowBanner: true,
+      shouldShowList: true,
+      shouldPlaySound: false, // the app plays its own alarm tones
+      shouldSetBadge: false,
+    }),
+  });
   await Notifications.setNotificationChannelAsync(CHANNEL_ALARM, {
     name: 'Alarm palang',
     importance: Notifications.AndroidImportance.MAX,
@@ -40,6 +41,8 @@ export async function setupAlarms() {
 }
 
 function notify(title: string, body: string, channelId: string) {
+  const Notifications = getNotifications();
+  if (!Notifications) return;
   // A channel-aware trigger delivers immediately on that Android channel.
   Notifications.scheduleNotificationAsync({ content: { title, body }, trigger: { channelId } }).catch(() => {});
 }
